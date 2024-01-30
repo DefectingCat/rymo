@@ -1,10 +1,17 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use bytes::Bytes;
-use std::{collections::HashMap, future::Future, pin::Pin};
+use std::{
+    collections::{HashMap, VecDeque},
+    future::Future,
+};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
+
+use crate::http::Status;
+
+pub mod http;
 
 #[derive(Debug)]
 pub struct Rymo<'a, 'b, F, Fut>
@@ -42,14 +49,23 @@ where
     }
 
     pub async fn process(&self, mut socket: TcpStream) -> Result<()> {
-        let (reader, _writer) = socket.split();
+        let (reader, mut writer) = socket.split();
 
         let headers = read_headers(reader).await?;
-        dbg!(&headers);
+        let mut headers: VecDeque<_> = headers.lines().collect();
+        let route = headers.pop_front().ok_or(anyhow!(""));
+        let headers = collect_headers(headers.into());
+
+        let response = format!("HTTP/1.1 {}\r\n\r\n", Status::Ok);
+        let response = format!("{}hello world", response);
+        dbg!(&route, &headers, &response);
+        writer.write_all(response.as_bytes()).await?;
         Ok(())
     }
 }
 
+/// Read bytes from reader to string
+/// but not common headers, include first line like GET / HTTP/1.1
 pub async fn read_headers<R>(reader: R) -> Result<String>
 where
     R: AsyncRead + std::marker::Unpin,
@@ -63,4 +79,17 @@ where
         }
     }
     Ok(request_string)
+}
+
+/// Collect request string with Hashmap to headers.
+pub fn collect_headers(request: Vec<&str>) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    request.iter().for_each(|header| {
+        if let Some(head) = header.split_once(": ") {
+            headers
+                .entry(head.0.to_string())
+                .or_insert(head.1.to_string());
+        }
+    });
+    headers
 }
