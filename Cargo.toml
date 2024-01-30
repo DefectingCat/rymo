@@ -6,12 +6,23 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 anyhow = "1.0.79"
-bytes = "1.5.0"
 dotenvy = "0.15.7"
 log = "0.4.20"
-tokio = { version = "1.35.1", features = ["full"] }
+tokio = { version = "1.35.1", features = [
+  "io-util",
+  "net",
+  "rt",
+  "macros",
+  "rt-multi-thread",
+] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-
 [[bin]]
 name = "rymo"
+
+[profile.release]
+lto = true
+panic = "abort"   # Strip expensive panic clean-up logic
+codegen-units = 1 # Compile crates one after another so the compiler can optimize better
+# opt-level = "s"   # Optimize for binary size
+strip = true # Remove debug symbols

@@ -1,6 +1,5 @@
 use crate::http::Status;
 use anyhow::{anyhow, Result};
-use bytes::Bytes;
 use log::error;
 use std::{
     collections::{HashMap, VecDeque},
@@ -17,7 +16,7 @@ pub mod http;
 pub struct Rymo<'a, 'b, F, Fut>
 where
     F: FnOnce() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, Bytes)>,
+    Fut: Future<Output = (i32, &'b [u8])>,
 {
     pub port: &'a str,
     pub handle: HashMap<&'b str, F>,
@@ -26,7 +25,7 @@ where
 impl<'a, 'b, F, Fut> Rymo<'a, 'b, F, Fut>
 where
     F: FnOnce() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, Bytes)>,
+    Fut: Future<Output = (i32, &'b [u8])>,
 {
     pub fn new(port: &'a str) -> Self {
         Self {

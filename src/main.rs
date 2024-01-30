@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
     let port = env::var("PORT").unwrap_or("4000".into());
     info!("listening on {port}");
     let mut app = Rymo::new(&port);
-    app.get("/", || async move { (200, "Hello world".into()) });
+    app.get("/", || async move { (200, "Hello world".as_bytes()) });
     app.serve().await?;
     Ok(())
 }
