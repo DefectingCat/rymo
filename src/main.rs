@@ -6,7 +6,6 @@ use std::env;
 use tracing::{info, warn};
 
 mod logger;
-mod rymo;
 
 #[tokio::main]
 async fn main() -> Result<()> {
