@@ -13,11 +13,9 @@ async fn main() -> Result<()> {
     init_logger();
     dotenv().map_err(|err| warn!("env file {err}")).ok();
 
-    let port = env::var("PORT")
-        .unwrap_or("4000".into())
-        .parse()
-        .unwrap_or(4000);
+    let port = env::var("PORT").unwrap_or("4000".into());
     info!("listening on {port}");
-    Rymo::listen(port);
+    let app = Rymo::new(port);
+    app.serve().await?;
     Ok(())
 }
