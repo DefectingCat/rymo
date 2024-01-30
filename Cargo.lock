@@ -315,6 +315,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "dotenvy",
+ "log",
  "tokio",
  "tracing",
  "tracing-subscriber",

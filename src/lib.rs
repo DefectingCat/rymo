@@ -1,5 +1,7 @@
+use crate::http::Status;
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use log::error;
 use std::{
     collections::{HashMap, VecDeque},
     future::Future,
@@ -8,8 +10,6 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
-
-use crate::http::Status;
 
 pub mod http;
 
@@ -40,28 +40,36 @@ where
 
         loop {
             let (socket, _) = listener.accept().await?;
-            self.process(socket).await?;
+            let task = async move {
+                match process(socket).await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        error!("ERROR: handle route failed {}", err);
+                    }
+                }
+            };
+            tokio::spawn(task);
         }
     }
 
     pub fn get(&mut self, path: &'b str, handler: F) {
         self.handle.entry(path).or_insert(handler);
     }
+}
 
-    pub async fn process(&self, mut socket: TcpStream) -> Result<()> {
-        let (reader, mut writer) = socket.split();
+pub async fn process(mut socket: TcpStream) -> Result<()> {
+    let (reader, mut writer) = socket.split();
 
-        let headers = read_headers(reader).await?;
-        let mut headers: VecDeque<_> = headers.lines().collect();
-        let route = headers.pop_front().ok_or(anyhow!(""));
-        let headers = collect_headers(headers.into());
+    let headers = read_headers(reader).await?;
+    let mut headers: VecDeque<_> = headers.lines().collect();
+    let route = headers.pop_front().ok_or(anyhow!(""));
+    let headers = collect_headers(headers.into());
 
-        let response = format!("HTTP/1.1 {}\r\n\r\n", Status::Ok);
-        let response = format!("{}hello world", response);
-        dbg!(&route, &headers, &response);
-        writer.write_all(response.as_bytes()).await?;
-        Ok(())
-    }
+    let response = format!("HTTP/1.1 {}\r\n\r\n", Status::Ok);
+    let response = format!("{}hello world", response);
+    dbg!(&route, &headers, &response);
+    writer.write_all(response.as_bytes()).await?;
+    Ok(())
 }
 
 /// Read bytes from reader to string
