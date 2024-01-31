@@ -1,11 +1,15 @@
 use anyhow::Result;
 use dotenvy::dotenv;
 use logger::init_logger;
-use rymo::{http, Rymo};
+use rymo::{http, Response, Rymo};
 use std::env;
 use tracing::{info, warn};
 
 mod logger;
+
+fn test() -> Response {
+    Box::pin(async move { (http::Status::Ok, "Hello Rymo from POST method".into()) })
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,6 +33,7 @@ async fn main() -> Result<()> {
         }),
     )
     .await;
+    app.post("/", Box::new(test)).await;
     app.serve().await?;
     Ok(())
 }

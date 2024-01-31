@@ -16,8 +16,8 @@ use tokio::{
 
 pub mod http;
 
-type Job =
-    Box<dyn Send + Sync + Fn() -> Pin<Box<dyn Future<Output = (Status, Bytes)> + Send + Sync>>>;
+pub type Response = Pin<Box<dyn Future<Output = (Status, Bytes)> + Send + Sync>>;
+type Job = Box<dyn Send + Sync + Fn() -> Response>;
 type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 
 pub struct Rymo<'a>
