@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
-use http::Status;
+use http::{collect_headers, read_headers, Status};
 use log::error;
 use std::{
     collections::{HashMap, VecDeque},
@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
@@ -21,8 +21,16 @@ where
     F: Fn() -> Fut + 'static + Send + Sync,
     Fut: Future<Output = (Status, Bytes)> + Send,
 {
+    /// Current listen port
     pub port: &'a str,
-    pub routes: Arc<RwLock<HashMap<&'static str, F>>>,
+    /// Registed routes
+    ///
+    /// ```not_rust
+    /// route_path : {
+    ///     http_method: route_handler
+    /// }
+    /// ```
+    pub routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
 }
 
 impl<'a, F, Fut> Rymo<'a, F, Fut>
@@ -57,13 +65,25 @@ where
 
     pub async fn get(&self, path: &'static str, handler: F) {
         let mut routes = self.routes.write().await;
-        routes.entry(path).or_insert(handler);
+        routes.entry(path).or_insert_with(|| {
+            let mut route_handler = HashMap::new();
+            route_handler.insert("GET", handler);
+            route_handler
+        });
+    }
+    pub async fn post(&self, path: &'static str, handler: F) {
+        let mut routes = self.routes.write().await;
+        routes.entry(path).or_insert_with(|| {
+            let mut route_handler = HashMap::new();
+            route_handler.insert("POST", handler);
+            route_handler
+        });
     }
 }
 
 pub async fn process<F, Fut>(
     mut socket: TcpStream,
-    routes: Arc<RwLock<HashMap<&'static str, F>>>,
+    routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
 ) -> Result<()>
 where
     F: Fn() -> Fut + 'static + Send + Sync,
@@ -77,55 +97,26 @@ where
     let headers = collect_headers(headers.into());
 
     let request_path: Vec<_> = route.split(' ').collect();
+    let request_method = request_path.first().ok_or(anyhow!(""))?; // read method failed
     let request_path = request_path.get(1).ok_or(anyhow!(""))?; // TODO error response
 
     let routes = routes.read().await;
     let route_handler = routes.get(request_path);
     match route_handler {
         Some(handler) => {
-            let resp = handler().await;
-            let response = format!("HTTP/1.1 {}\r\n\r\n", resp.0);
-            let response = [response.as_bytes(), &resp.1].concat();
-            dbg!(&request_path, &headers);
-            writer.write_all(&response).await?;
-            Ok(())
+            let method = handler.get(request_method.to_uppercase().as_str());
+            match method {
+                Some(route_handler) => {
+                    let resp = route_handler().await;
+                    let response = format!("HTTP/1.1 {}\r\n\r\n", resp.0);
+                    let response = [response.as_bytes(), &resp.1].concat();
+                    dbg!(&request_path, &headers);
+                    writer.write_all(&response).await?;
+                    Ok(())
+                }
+                None => todo!(), // Method not allow
+            }
         }
         None => todo!(), // 404
     }
-
-    /* let response = format!("HTTP/1.1 {}\r\n\r\n", Status::Ok);
-    let response = format!("{}hello world", response);
-    dbg!(&request_path, &headers, &response);
-    writer.write_all(response.as_bytes()).await?;
-    Ok(()) */
-}
-
-/// Read bytes from reader to string
-/// but not common headers, include first line like GET / HTTP/1.1
-pub async fn read_headers<R>(reader: R) -> Result<String>
-where
-    R: AsyncRead + std::marker::Unpin,
-{
-    let mut request_string = String::new();
-    let mut reader = BufReader::new(reader);
-    loop {
-        let byte = reader.read_line(&mut request_string).await?;
-        if byte < 3 {
-            break;
-        }
-    }
-    Ok(request_string)
-}
-
-/// Collect request string with Hashmap to headers.
-pub fn collect_headers(request: Vec<&str>) -> HashMap<String, String> {
-    let mut headers = HashMap::new();
-    request.iter().for_each(|header| {
-        if let Some(head) = header.split_once(": ") {
-            headers
-                .entry(head.0.to_string())
-                .or_insert(head.1.to_string());
-        }
-    });
-    headers
 }

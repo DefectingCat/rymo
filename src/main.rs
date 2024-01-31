@@ -15,11 +15,14 @@ async fn main() -> Result<()> {
     let port = env::var("PORT").unwrap_or("4000".into());
     info!("listening on {port}");
     let app = Rymo::new(&port);
-    app.get(
-        "/",
-        || async move { (http::Status::Ok, "Hello Rymo".into()) },
-    )
+    app.get("/", || async move {
+        (http::Status::Ok, "Hello Rymo from GET method".into())
+    })
     .await;
+    /* app.post("/", || async move {
+        (http::Status::Ok, "Hello Rymo from POST method".into())
+    })
+    .await; */
     app.serve().await?;
     Ok(())
 }
