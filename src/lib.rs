@@ -15,10 +15,13 @@ use tokio::{
 
 pub mod http;
 
-#[derive(Debug)]
-pub struct Rymo<'a, F, Fut>
+type Job = Box<dyn Fn() -> Box<dyn Future<Output = (Status, Bytes)> + Send>>;
+type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
+
+pub struct Rymo<'a, Fut>
 where
-    F: Fn() -> Fut + 'static + Send + Sync,
+    // F: Fn() -> Fut + 'static + Send + Sync,
+    // F: Box<dyn Fn() -> Fut + 'static + Send + Sync>,
     Fut: Future<Output = (Status, Bytes)> + Send,
 {
     /// Current listen port
@@ -30,13 +33,13 @@ where
     ///     http_method: route_handler
     /// }
     /// ```
-    pub routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
+    pub routes: Routes<Fut>,
 }
 
-impl<'a, F, Fut> Rymo<'a, F, Fut>
+impl<'a, Fut> Rymo<'a, Fut>
 where
-    F: Fn() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (Status, Bytes)> + Send,
+    // F: Fn() -> Fut + 'static + Send + Sync,
+    Fut: Future<Output = (Status, Bytes)> + Send + 'a + 'static,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
@@ -63,7 +66,7 @@ where
         }
     }
 
-    pub async fn get(&self, path: &'static str, handler: F) {
+    pub async fn get(&self, path: &'static str, handler: Job<Fut>) {
         let mut routes = self.routes.write().await;
         routes.entry(path).or_insert_with(|| {
             let mut route_handler = HashMap::new();
@@ -71,7 +74,7 @@ where
             route_handler
         });
     }
-    pub async fn post(&self, path: &'static str, handler: F) {
+    pub async fn post(&self, path: &'static str, handler: Job<Fut>) {
         let mut routes = self.routes.write().await;
         routes.entry(path).or_insert_with(|| {
             let mut route_handler = HashMap::new();
@@ -81,12 +84,12 @@ where
     }
 }
 
-pub async fn process<F, Fut>(
+pub async fn process<Fut>(
     mut socket: TcpStream,
-    routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
+    // routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
+    routes: Routes<Fut>,
 ) -> Result<()>
 where
-    F: Fn() -> Fut + 'static + Send + Sync,
     Fut: Future<Output = (Status, Bytes)> + Send,
 {
     let (reader, mut writer) = socket.split();
