@@ -4,6 +4,7 @@ use log::error;
 use std::{
     collections::{HashMap, VecDeque},
     future::Future,
+    sync::{Arc, RwLock},
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
@@ -19,7 +20,7 @@ where
     Fut: Future<Output = (i32, &'b [u8])>,
 {
     pub port: &'a str,
-    pub handle: HashMap<&'b str, F>,
+    pub handle: Arc<RwLock<HashMap<&'b str, F>>>,
 }
 
 impl<'a, 'b, F, Fut> Rymo<'a, 'b, F, Fut>
@@ -30,7 +31,7 @@ where
     pub fn new(port: &'a str) -> Self {
         Self {
             port,
-            handle: HashMap::new(),
+            handle: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -51,8 +52,13 @@ where
         }
     }
 
-    pub fn get(&mut self, path: &'b str, handler: F) {
-        self.handle.entry(path).or_insert(handler);
+    pub fn get(&mut self, path: &'b str, handler: F) -> Result<()> {
+        let mut routes = self
+            .handle
+            .write()
+            .map_err(|err| anyhow!("lock rwlock failed {}", err))?;
+        routes.entry(path).or_insert(handler);
+        Ok(())
     }
 }
 
