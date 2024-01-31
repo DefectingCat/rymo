@@ -17,12 +17,16 @@ async fn main() -> Result<()> {
     let app = Rymo::new(&port);
     app.get(
         "/",
-        Box::new(|| async move { (http::Status::Ok, "Hello Rymo from GET method".into()) }),
+        Box::new(|| {
+            Box::pin(async move { (http::Status::Ok, "Hello Rymo from GET method".into()) })
+        }),
     )
     .await;
     app.get(
-        "/",
-        Box::new(|| async move { (http::Status::Ok, "Hello Rymo from GET method".into()) }),
+        "/test",
+        Box::new(|| {
+            Box::pin(async move { (http::Status::Ok, "Hello test from GET method".into()) })
+        }),
     )
     .await;
     app.serve().await?;

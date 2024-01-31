@@ -5,6 +5,7 @@ use log::error;
 use std::{
     collections::{HashMap, VecDeque},
     future::Future,
+    pin::Pin,
     sync::Arc,
 };
 use tokio::{
@@ -15,14 +16,15 @@ use tokio::{
 
 pub mod http;
 
-type Job = Box<dyn Fn() -> Box<dyn Future<Output = (Status, Bytes)> + Send>>;
+type Job =
+    Box<dyn Send + Sync + Fn() -> Pin<Box<dyn Future<Output = (Status, Bytes)> + Send + Sync>>>;
 type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 
-pub struct Rymo<'a, Fut>
+pub struct Rymo<'a>
 where
-    // F: Fn() -> Fut + 'static + Send + Sync,
-    // F: Box<dyn Fn() -> Fut + 'static + Send + Sync>,
-    Fut: Future<Output = (Status, Bytes)> + Send,
+// F: Fn() -> Fut + 'static + Send + Sync,
+// F: Box<dyn Fn() -> Fut + 'static + Send + Sync>,
+// Fut: Future<Output = (Status, Bytes)> + Send,
 {
     /// Current listen port
     pub port: &'a str,
@@ -33,13 +35,13 @@ where
     ///     http_method: route_handler
     /// }
     /// ```
-    pub routes: Routes<Fut>,
+    pub routes: Routes,
 }
 
-impl<'a, Fut> Rymo<'a, Fut>
+impl<'a> Rymo<'a>
 where
-    // F: Fn() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (Status, Bytes)> + Send + 'a + 'static,
+// F: Fn() -> Fut + 'static + Send + Sync,
+// Fut: Future<Output = (Status, Bytes)> + Send + 'a + 'static,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
@@ -66,7 +68,7 @@ where
         }
     }
 
-    pub async fn get(&self, path: &'static str, handler: Job<Fut>) {
+    pub async fn get(&self, path: &'static str, handler: Job) {
         let mut routes = self.routes.write().await;
         routes.entry(path).or_insert_with(|| {
             let mut route_handler = HashMap::new();
@@ -74,7 +76,7 @@ where
             route_handler
         });
     }
-    pub async fn post(&self, path: &'static str, handler: Job<Fut>) {
+    pub async fn post(&self, path: &'static str, handler: Job) {
         let mut routes = self.routes.write().await;
         routes.entry(path).or_insert_with(|| {
             let mut route_handler = HashMap::new();
@@ -84,13 +86,13 @@ where
     }
 }
 
-pub async fn process<Fut>(
+pub async fn process(
     mut socket: TcpStream,
     // routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
-    routes: Routes<Fut>,
+    routes: Routes,
 ) -> Result<()>
-where
-    Fut: Future<Output = (Status, Bytes)> + Send,
+// where
+//     Fut: Future<Output = (Status, Bytes)> + Send,
 {
     let (reader, mut writer) = socket.split();
 
