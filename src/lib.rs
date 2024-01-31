@@ -20,12 +20,7 @@ pub type Response = Pin<Box<dyn Future<Output = (Status, Bytes)> + Send + Sync>>
 type Job = Box<dyn Send + Sync + Fn() -> Response>;
 type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 
-pub struct Rymo<'a>
-where
-// F: Fn() -> Fut + 'static + Send + Sync,
-// F: Box<dyn Fn() -> Fut + 'static + Send + Sync>,
-// Fut: Future<Output = (Status, Bytes)> + Send,
-{
+pub struct Rymo<'a> {
     /// Current listen port
     pub port: &'a str,
     /// Registed routes
@@ -38,11 +33,7 @@ where
     pub routes: Routes,
 }
 
-impl<'a> Rymo<'a>
-where
-// F: Fn() -> Fut + 'static + Send + Sync,
-// Fut: Future<Output = (Status, Bytes)> + Send + 'a + 'static,
-{
+impl<'a> Rymo<'a> {
     pub fn new(port: &'a str) -> Self {
         Self {
             port,
@@ -70,30 +61,17 @@ where
 
     pub async fn get(&self, path: &'static str, handler: Job) {
         let mut routes = self.routes.write().await;
-        routes.entry(path).or_insert_with(|| {
-            let mut route_handler = HashMap::new();
-            route_handler.insert("GET", handler);
-            route_handler
-        });
+        let path_handler = routes.entry(path).or_default();
+        path_handler.entry("GET").or_insert(handler);
     }
     pub async fn post(&self, path: &'static str, handler: Job) {
         let mut routes = self.routes.write().await;
-        routes.entry(path).or_insert_with(|| {
-            let mut route_handler = HashMap::new();
-            route_handler.insert("POST", handler);
-            route_handler
-        });
+        let path_handler = routes.entry(path).or_default();
+        path_handler.entry("POST").or_insert(handler);
     }
 }
 
-pub async fn process(
-    mut socket: TcpStream,
-    // routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
-    routes: Routes,
-) -> Result<()>
-// where
-//     Fut: Future<Output = (Status, Bytes)> + Send,
-{
+pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
     let (reader, mut writer) = socket.split();
 
     let headers = read_headers(reader).await?;
