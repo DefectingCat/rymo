@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use http::Status;
 use log::error;
 use std::{
     collections::{HashMap, VecDeque},
@@ -18,7 +19,7 @@ pub mod http;
 pub struct Rymo<'a, F, Fut>
 where
     F: Fn() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, Bytes)> + Send,
+    Fut: Future<Output = (Status, Bytes)> + Send,
 {
     pub port: &'a str,
     pub routes: Arc<RwLock<HashMap<&'static str, F>>>,
@@ -27,7 +28,7 @@ where
 impl<'a, F, Fut> Rymo<'a, F, Fut>
 where
     F: Fn() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, Bytes)> + Send,
+    Fut: Future<Output = (Status, Bytes)> + Send,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
@@ -54,7 +55,7 @@ where
         }
     }
 
-    pub async fn get(&mut self, path: &'static str, handler: F) {
+    pub async fn get(&self, path: &'static str, handler: F) {
         let mut routes = self.routes.write().await;
         routes.entry(path).or_insert(handler);
     }
@@ -66,7 +67,7 @@ pub async fn process<F, Fut>(
 ) -> Result<()>
 where
     F: Fn() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, Bytes)> + Send,
+    Fut: Future<Output = (Status, Bytes)> + Send,
 {
     let (reader, mut writer) = socket.split();
 

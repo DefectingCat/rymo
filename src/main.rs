@@ -1,7 +1,7 @@
 use anyhow::Result;
 use dotenvy::dotenv;
 use logger::init_logger;
-use rymo::Rymo;
+use rymo::{http, Rymo};
 use std::env;
 use tracing::{info, warn};
 
@@ -14,9 +14,12 @@ async fn main() -> Result<()> {
 
     let port = env::var("PORT").unwrap_or("4000".into());
     info!("listening on {port}");
-    let mut app = Rymo::new(&port);
-    app.get("/", || async move { (200, "Hello Rymo".into()) })
-        .await;
+    let app = Rymo::new(&port);
+    app.get(
+        "/",
+        || async move { (http::Status::Ok, "Hello Rymo".into()) },
+    )
+    .await;
     app.serve().await?;
     Ok(())
 }
