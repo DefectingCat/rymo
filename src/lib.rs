@@ -1,37 +1,38 @@
-use crate::http::Status;
 use anyhow::{anyhow, Result};
+use bytes::Bytes;
 use log::error;
 use std::{
     collections::{HashMap, VecDeque},
     future::Future,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
+    sync::RwLock,
 };
 
 pub mod http;
 
 #[derive(Debug)]
-pub struct Rymo<'a, 'b, F, Fut>
+pub struct Rymo<'a, F, Fut>
 where
-    F: FnOnce() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, &'b [u8])>,
+    F: Fn() -> Fut + 'static + Send + Sync,
+    Fut: Future<Output = (i32, Bytes)> + Send,
 {
     pub port: &'a str,
-    pub handle: Arc<RwLock<HashMap<&'b str, F>>>,
+    pub routes: Arc<RwLock<HashMap<&'static str, F>>>,
 }
 
-impl<'a, 'b, F, Fut> Rymo<'a, 'b, F, Fut>
+impl<'a, F, Fut> Rymo<'a, F, Fut>
 where
-    F: FnOnce() -> Fut + 'static + Send + Sync,
-    Fut: Future<Output = (i32, &'b [u8])>,
+    F: Fn() -> Fut + 'static + Send + Sync,
+    Fut: Future<Output = (i32, Bytes)> + Send,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
             port,
-            handle: Arc::new(RwLock::new(HashMap::new())),
+            routes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -40,8 +41,9 @@ where
 
         loop {
             let (socket, _) = listener.accept().await?;
+            let routes = self.routes.clone();
             let task = async move {
-                match process(socket).await {
+                match process(socket, routes).await {
                     Ok(_) => {}
                     Err(err) => {
                         error!("ERROR: handle route failed {}", err);
@@ -52,29 +54,49 @@ where
         }
     }
 
-    pub fn get(&mut self, path: &'b str, handler: F) -> Result<()> {
-        let mut routes = self
-            .handle
-            .write()
-            .map_err(|err| anyhow!("lock rwlock failed {}", err))?;
+    pub async fn get(&mut self, path: &'static str, handler: F) {
+        let mut routes = self.routes.write().await;
         routes.entry(path).or_insert(handler);
-        Ok(())
     }
 }
 
-pub async fn process(mut socket: TcpStream) -> Result<()> {
+pub async fn process<F, Fut>(
+    mut socket: TcpStream,
+    routes: Arc<RwLock<HashMap<&'static str, F>>>,
+) -> Result<()>
+where
+    F: Fn() -> Fut + 'static + Send + Sync,
+    Fut: Future<Output = (i32, Bytes)> + Send,
+{
     let (reader, mut writer) = socket.split();
 
     let headers = read_headers(reader).await?;
     let mut headers: VecDeque<_> = headers.lines().collect();
-    let route = headers.pop_front().ok_or(anyhow!(""));
+    let route = headers.pop_front().ok_or(anyhow!(""))?;
     let headers = collect_headers(headers.into());
 
-    let response = format!("HTTP/1.1 {}\r\n\r\n", Status::Ok);
+    let request_path: Vec<_> = route.split(' ').collect();
+    let request_path = request_path.get(1).ok_or(anyhow!(""))?; // TODO error response
+
+    let routes = routes.read().await;
+    let route_handler = routes.get(request_path);
+    match route_handler {
+        Some(handler) => {
+            let resp = handler().await;
+            let response = format!("HTTP/1.1 {}\r\n\r\n", resp.0);
+            let response = [response.as_bytes(), &resp.1].concat();
+            dbg!(&request_path, &headers);
+            writer.write_all(&response).await?;
+            Ok(())
+        }
+        None => todo!(), // 404
+    }
+
+    /* let response = format!("HTTP/1.1 {}\r\n\r\n", Status::Ok);
     let response = format!("{}hello world", response);
-    dbg!(&route, &headers, &response);
+    dbg!(&request_path, &headers, &response);
     writer.write_all(response.as_bytes()).await?;
-    Ok(())
+    Ok(()) */
 }
 
 /// Read bytes from reader to string
