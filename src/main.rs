@@ -1,7 +1,10 @@
 use anyhow::Result;
 use dotenvy::dotenv;
 use logger::init_logger;
-use rymo::{http, Rymo};
+use rymo::{
+    http::{self},
+    Rymo,
+};
 use std::env;
 use tracing::{info, warn};
 
@@ -16,32 +19,24 @@ async fn main() -> Result<()> {
     info!("listening on {port}");
     let app = Rymo::new(&port);
 
-    app.get(
-        "/",
-        Box::new(|req| {
-            Box::pin(async move {
-                (
-                    http::Status::Ok,
-                    format!(
-                        "Hello Rymo {} method from {}",
-                        req.method,
-                        req.headers
-                            .get("User-Agent")
-                            .unwrap_or(&"Unknow".to_string())
-                    )
-                    .into(),
+    app.get("/", |req| {
+        let task = async move {
+            (
+                http::Status::Ok,
+                format!(
+                    "Hello Rymo {} method from {}",
+                    req.method,
+                    req.headers
+                        .get("User-Agent")
+                        .unwrap_or(&"Unknow".to_string())
                 )
-            })
-        }),
-    )
+                .into(),
+            )
+        };
+        Box::pin(task)
+    })
     .await;
-    app.get(
-        "/test",
-        Box::new(|_| {
-            Box::pin(async move { (http::Status::Ok, "Hello test from GET method".into()) })
-        }),
-    )
-    .await;
+    // app.get("/test", test_handler).await;
     app.serve().await?;
     Ok(())
 }
