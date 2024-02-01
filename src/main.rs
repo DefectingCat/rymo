@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
     let port = env::var("PORT").unwrap_or("4000".into());
     info!("listening on {port}");
     let app = Rymo::new(&port);
+
     app.get(
         "/",
         Box::new(|| {

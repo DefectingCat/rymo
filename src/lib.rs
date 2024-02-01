@@ -23,7 +23,7 @@ type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 pub struct Rymo<'a> {
     /// Current listen port
     pub port: &'a str,
-    /// Registed routes
+    /// Registried routes
     ///
     /// ```not_rust
     /// route_path : {
@@ -58,18 +58,28 @@ impl<'a> Rymo<'a> {
             tokio::spawn(task);
         }
     }
-
-    pub async fn get(&self, path: &'static str, handler: Job) {
-        let mut routes = self.routes.write().await;
-        let path_handler = routes.entry(path).or_default();
-        path_handler.entry("GET").or_insert(handler);
-    }
-    pub async fn post(&self, path: &'static str, handler: Job) {
-        let mut routes = self.routes.write().await;
-        let path_handler = routes.entry(path).or_default();
-        path_handler.entry("POST").or_insert(handler);
-    }
 }
+
+macro_rules! http_handler {
+    ($fn_name:ident) => {
+        impl<'a> Rymo<'a> {
+            pub async fn $fn_name(&self, path: &'static str, handler: Job) {
+                let mut routes = self.routes.write().await;
+                let path_handler = routes.entry(path).or_default();
+                path_handler.entry(stringify!($fn_name)).or_insert(handler);
+            }
+        }
+    };
+}
+http_handler!(get);
+http_handler!(head);
+http_handler!(post);
+http_handler!(put);
+http_handler!(delete);
+http_handler!(connect);
+http_handler!(options);
+http_handler!(trace);
+http_handler!(patch);
 
 pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
     let (reader, mut writer) = socket.split();
@@ -87,7 +97,7 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
     let route_handler = routes.get(request_path);
     match route_handler {
         Some(handler) => {
-            let method = handler.get(request_method.to_uppercase().as_str());
+            let method = handler.get(request_method.to_lowercase().as_str());
             match method {
                 Some(route_handler) => {
                     let resp = route_handler().await;
