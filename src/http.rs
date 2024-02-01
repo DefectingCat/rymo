@@ -26,6 +26,22 @@ impl Display for Status {
     }
 }
 
+pub struct Request {
+    pub path: String,
+    pub method: String,
+    pub headers: HashMap<String, String>,
+}
+
+impl Request {
+    pub fn new<S: Display>(path: S, method: S, headers: HashMap<String, String>) -> Self {
+        Self {
+            path: path.to_string(),
+            method: method.to_string(),
+            headers,
+        }
+    }
+}
+
 /// Read bytes from reader to string
 /// but not common headers, include first line like GET / HTTP/1.1
 pub async fn read_headers<R>(reader: R) -> Result<String>

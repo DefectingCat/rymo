@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
-use http::{collect_headers, read_headers, Status};
+use http::{collect_headers, read_headers, Request, Status};
 use log::error;
 use std::{
     collections::{HashMap, VecDeque},
@@ -17,7 +17,7 @@ use tokio::{
 pub mod http;
 
 pub type Response = Pin<Box<dyn Future<Output = (Status, Bytes)> + Send + Sync>>;
-type Job = Box<dyn Send + Sync + Fn() -> Response>;
+type Job = Box<dyn Send + Sync + Fn(Request) -> Response>;
 type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 
 pub struct Rymo<'a> {
@@ -93,6 +93,10 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
     let request_method = request_path.first().ok_or(anyhow!(""))?; // read method failed
     let request_path = request_path.get(1).ok_or(anyhow!(""))?; // TODO error response
 
+    // build client request
+    let req = Request::new(request_path, request_method, headers);
+
+    // Registried routes
     let routes = routes.read().await;
     let route_handler = routes.get(request_path);
     match route_handler {
@@ -100,10 +104,10 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
             let method = handler.get(request_method.to_lowercase().as_str());
             match method {
                 Some(route_handler) => {
-                    let resp = route_handler().await;
+                    let resp = route_handler(req).await;
                     let response = format!("HTTP/1.1 {}\r\n\r\n", resp.0);
                     let response = [response.as_bytes(), &resp.1].concat();
-                    dbg!(&request_path, &headers);
+                    // dbg!(&request_path, &headers);
                     writer.write_all(&response).await?;
                     Ok(())
                 }
