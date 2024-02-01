@@ -1,11 +1,10 @@
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use futures::future::BoxFuture;
 use http::{collect_headers, read_headers, Request, Status};
 use log::error;
 use std::{
     collections::{HashMap, VecDeque},
-    future::Future,
-    pin::Pin,
     sync::Arc,
 };
 use tokio::{
@@ -16,7 +15,7 @@ use tokio::{
 
 pub mod http;
 
-pub type Response = Pin<Box<dyn Future<Output = (Status, Bytes)> + Send>>;
+pub type Response = BoxFuture<'static, (Status, Bytes)>;
 type Job = fn(Request) -> Response;
 type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 
