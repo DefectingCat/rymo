@@ -1,27 +1,9 @@
-use anyhow::anyhow;
-
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("invalid request {0}")]
     InvalidRequest(String),
-    UnknownError(anyhow::Error),
-}
-
-impl From<Error> for anyhow::Error {
-    fn from(value: Error) -> Self {
-        use Error::*;
-
-        match value {
-            InvalidRequest(err) => {
-                anyhow!("invalid request {}", err)
-            }
-            UnknownError(err) => err,
-        }
-    }
-}
-
-impl From<anyhow::Error> for Error {
-    fn from(value: anyhow::Error) -> Self {
-        Self::UnknownError(value)
-    }
+    #[error("server internal error {0}")]
+    UnknownError(#[from] anyhow::Error),
 }
 
 pub type Result<T, E = Error> = anyhow::Result<T, E>;
