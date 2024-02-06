@@ -1,18 +1,21 @@
-use crate::error::{Error, Result};
-use anyhow::anyhow;
-use bytes::Bytes;
-use futures::future::BoxFuture;
-use http::{collect_headers, read_headers, Request, Status};
-use log::error;
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
 };
+
+use anyhow::anyhow;
+use bytes::Bytes;
+use futures::future::BoxFuture;
+use log::error;
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
+
+use http::{collect_headers, read_headers, Request, Status};
+
+use crate::error::{Error, Result};
 
 pub mod error;
 pub mod http;
@@ -114,13 +117,16 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
                     let resp = route_handler(req).await;
                     let response = format!("HTTP/1.1 {}\r\n\r\n", resp.0);
                     let response = [response.as_bytes(), &resp.1].concat();
-                    // dbg!(&request_path, &headers);
                     writer.write_all(&response).await?;
                     Ok(())
                 }
                 None => todo!(), // Method not allow
             }
         }
-        None => todo!(), // 404
+        None => {
+            let response = format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound);
+            writer.write_all(response.as_bytes()).await?;
+            Ok(())
+        } // 404
     }
 }

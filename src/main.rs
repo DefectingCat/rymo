@@ -1,12 +1,14 @@
+use std::env;
+
 use anyhow::Result;
 use dotenvy::dotenv;
+use tracing::{info, warn};
+
 use logger::init_logger;
 use rymo::{
     http::{self},
     Rymo,
 };
-use std::env;
-use tracing::{info, warn};
 
 mod logger;
 
@@ -28,7 +30,7 @@ async fn main() -> Result<()> {
                     req.method,
                     req.headers
                         .get("User-Agent")
-                        .unwrap_or(&"Unknow".to_string())
+                        .unwrap_or(&"Unknown".to_string())
                 )
                 .into(),
             )

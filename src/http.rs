@@ -1,11 +1,13 @@
-use anyhow::Result;
 use std::{collections::HashMap, fmt::Display};
+
+use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 #[derive(Debug)]
 pub enum Status {
     Ok,
     InternalServer,
+    NotFound,
 }
 
 impl From<&Status> for &str {
@@ -15,6 +17,7 @@ impl From<&Status> for &str {
         match val {
             Ok => "200 OK",
             InternalServer => "500 Internal Server Error",
+            NotFound => "404 Not Found",
         }
     }
 }

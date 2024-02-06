@@ -1,4 +1,5 @@
 use std::env;
+
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
 pub fn init_logger() {

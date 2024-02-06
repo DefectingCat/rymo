@@ -13,6 +13,7 @@ impl From<std::io::Error> for Error {
         Self::InternalServerError(anyhow!("{value}"))
     }
 }
+
 impl From<anyhow::Error> for Error {
     fn from(value: anyhow::Error) -> Self {
         Self::InternalServerError(value)
