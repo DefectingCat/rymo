@@ -8,6 +8,7 @@ pub enum Status {
     Ok,
     InternalServer,
     NotFound,
+    MethodNotAllowed,
 }
 
 impl From<&Status> for &str {
@@ -18,6 +19,7 @@ impl From<&Status> for &str {
             Ok => "200 OK",
             InternalServer => "500 Internal Server Error",
             NotFound => "404 Not Found",
+            MethodNotAllowed => "405 Method Not Allowed",
         }
     }
 }

@@ -120,7 +120,11 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
                     writer.write_all(&response).await?;
                     Ok(())
                 }
-                None => todo!(), // Method not allow
+                None => {
+                    let response = format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed);
+                    writer.write_all(response.as_bytes()).await?;
+                    Ok(())
+                } // Method not allow
             }
         }
         None => {

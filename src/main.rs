@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     info!("listening on {port}");
     let app = Rymo::new(&port);
 
-    app.get("/", |req| {
+    app.post("/", |req| {
         let task = async move {
             (
                 http::Status::Ok,
