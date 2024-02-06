@@ -1,4 +1,5 @@
-use anyhow::{anyhow, Result};
+use crate::error::{Error, Result};
+use anyhow::anyhow;
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use http::{collect_headers, read_headers, Request, Status};
@@ -13,6 +14,7 @@ use tokio::{
     sync::RwLock,
 };
 
+pub mod error;
 pub mod http;
 
 pub type Response = BoxFuture<'static, (Status, Bytes)>;
@@ -89,7 +91,9 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
     let headers = collect_headers(headers.into());
 
     let request_path: Vec<_> = route.split(' ').collect();
-    let request_method = request_path.first().ok_or(anyhow!(""))?; // read method failed
+    let request_method = request_path
+        .first()
+        .ok_or(Error::InvalidRequest("missing request method".into()))?;
     let request_path = request_path.get(1).ok_or(anyhow!(""))?; // TODO error response
 
     // build client request
