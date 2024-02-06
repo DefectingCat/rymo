@@ -87,14 +87,18 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
 
     let headers = read_headers(reader).await?;
     let mut headers: VecDeque<_> = headers.lines().collect();
-    let route = headers.pop_front().ok_or(anyhow!(""))?;
+    let route = headers
+        .pop_front()
+        .ok_or(anyhow!("popup route stack failed"))?;
     let headers = collect_headers(headers.into());
 
     let request_path: Vec<_> = route.split(' ').collect();
     let request_method = request_path
         .first()
         .ok_or(Error::InvalidRequest("missing request method".into()))?;
-    let request_path = request_path.get(1).ok_or(anyhow!(""))?; // TODO error response
+    let request_path = request_path
+        .get(1)
+        .ok_or(anyhow!("cannot find route handler"))?;
 
     // build client request
     let req = Request::new(request_path, request_method, headers);
