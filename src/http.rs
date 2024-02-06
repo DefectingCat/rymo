@@ -46,7 +46,7 @@ impl Request {
 /// but not common headers, include first line like GET / HTTP/1.1
 pub async fn read_headers<R>(reader: R) -> Result<String>
 where
-    R: AsyncRead + std::marker::Unpin,
+    R: AsyncRead + Unpin,
 {
     let mut request_string = String::new();
     let mut reader = BufReader::new(reader);

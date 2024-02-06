@@ -22,7 +22,7 @@ type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
 pub struct Rymo<'a> {
     /// Current listen port
     pub port: &'a str,
-    /// Registried routes
+    /// Registries routes
     ///
     /// ```not_rust
     /// route_path : {
@@ -95,7 +95,7 @@ pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
     // build client request
     let req = Request::new(request_path, request_method, headers);
 
-    // Registried routes
+    // Registries routes
     let routes = routes.read().await;
     let route_handler = routes.get(request_path);
     match route_handler {
