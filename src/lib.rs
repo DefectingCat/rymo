@@ -4,7 +4,6 @@ use std::{
 };
 
 use anyhow::anyhow;
-use bytes::Bytes;
 use futures::Future;
 use log::error;
 use tokio::{
@@ -13,22 +12,18 @@ use tokio::{
     sync::RwLock,
 };
 
-use http::{collect_headers, read_headers, Request, Status};
+pub use http::Response;
+use http::{collect_headers, read_headers, IntoResponse, Request, Status};
 
 use crate::error::{Error, Result};
 
 pub mod error;
 pub mod http;
 
-// pub type Response = BoxFuture<'static, (Status, Bytes)>;
-// type Job = fn(Request) -> Response;
-// type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
-pub type Response = (Status, Bytes);
-
 pub struct Rymo<'a, F, Fut>
 where
     F: Fn(Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = (Status, Bytes)>,
+    Fut: Future<Output = Response>,
 {
     /// Current listen port
     pub port: &'a str,
@@ -104,7 +99,7 @@ pub async fn process<F, Fut>(
 ) -> Result<()>
 where
     F: Fn(Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = (Status, Bytes)>,
+    Fut: Future<Output = Response>,
 {
     let (reader, mut writer) = socket.split();
 
@@ -134,10 +129,8 @@ where
             let method = handler.get(request_method.to_lowercase().as_str());
             match method {
                 Some(route_handler) => {
-                    let resp = route_handler(req).await;
-                    let response = format!("HTTP/1.1 {}\r\n\r\n", resp.0);
-                    let response = [response.as_bytes(), &resp.1].concat();
-                    writer.write_all(&response).await?;
+                    let resp = route_handler(req).await.into_response();
+                    writer.write_all(&resp).await?;
                     Ok(())
                 }
                 None => {

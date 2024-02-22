@@ -1,7 +1,21 @@
 use std::{collections::HashMap, fmt::Display};
 
 use anyhow::Result;
+use bytes::Bytes;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+
+pub struct Response(pub Status, pub Bytes);
+
+pub trait IntoResponse {
+    fn into_response(self) -> Vec<u8>;
+}
+
+impl IntoResponse for Response {
+    fn into_response(self) -> Vec<u8> {
+        let response = format!("HTTP/1.1 {}\r\n\r\n", self.0);
+        [response.as_bytes(), &self.1].concat()
+    }
+}
 
 #[derive(Debug)]
 pub enum Status {

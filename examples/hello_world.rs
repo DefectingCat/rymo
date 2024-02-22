@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
 }
 
 async fn handler(req: Request) -> Response {
-    (
+    Response(
         http::Status::Ok,
         format!(
             "Hello Rymo {} method from {}",
