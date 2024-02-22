@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::anyhow;
 use bytes::Bytes;
-use futures::future::BoxFuture;
+use futures::Future;
 use log::error;
 use tokio::{
     io::AsyncWriteExt,
@@ -20,11 +20,16 @@ use crate::error::{Error, Result};
 pub mod error;
 pub mod http;
 
-pub type Response = BoxFuture<'static, (Status, Bytes)>;
-type Job = fn(Request) -> Response;
-type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
+// pub type Response = BoxFuture<'static, (Status, Bytes)>;
+// type Job = fn(Request) -> Response;
+// type Routes = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Job>>>>;
+pub type Response = (Status, Bytes);
 
-pub struct Rymo<'a> {
+pub struct Rymo<'a, F, Fut>
+where
+    F: Fn(Request) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = (Status, Bytes)>,
+{
     /// Current listen port
     pub port: &'a str,
     /// Registries routes
@@ -34,10 +39,14 @@ pub struct Rymo<'a> {
     ///     http_method: route_handler
     /// }
     /// ```
-    pub routes: Routes,
+    pub routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
 }
 
-impl<'a> Rymo<'a> {
+impl<'a, F, Fut> Rymo<'a, F, Fut>
+where
+    F: Fn(Request) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Response> + Send,
+{
     pub fn new(port: &'a str) -> Self {
         Self {
             port,
@@ -66,8 +75,12 @@ impl<'a> Rymo<'a> {
 
 macro_rules! http_handler {
     ($fn_name:ident) => {
-        impl<'a> Rymo<'a> {
-            pub async fn $fn_name(&self, path: &'static str, handler: Job) {
+        impl<'a, F, Fut> Rymo<'a, F, Fut>
+        where
+            F: Fn(Request) -> Fut + Send + Sync + 'static,
+            Fut: Future<Output = Response>,
+        {
+            pub async fn $fn_name(&self, path: &'static str, handler: F) {
                 let mut routes = self.routes.write().await;
                 let path_handler = routes.entry(path).or_default();
                 path_handler.entry(stringify!($fn_name)).or_insert(handler);
@@ -85,7 +98,14 @@ http_handler!(options);
 http_handler!(trace);
 http_handler!(patch);
 
-pub async fn process(mut socket: TcpStream, routes: Routes) -> Result<()> {
+pub async fn process<F, Fut>(
+    mut socket: TcpStream,
+    routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
+) -> Result<()>
+where
+    F: Fn(Request) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = (Status, Bytes)>,
+{
     let (reader, mut writer) = socket.split();
 
     let headers = read_headers(reader).await?;

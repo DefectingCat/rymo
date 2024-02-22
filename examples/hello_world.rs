@@ -1,6 +1,6 @@
 use std::env;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use dotenvy::dotenv;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
@@ -40,19 +40,16 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn handler(req: Request) -> Response {
-    let task = async move {
-        (
-            http::Status::Ok,
-            format!(
-                "Hello Rymo {} method from {}",
-                req.method,
-                req.headers
-                    .get("User-Agent")
-                    .unwrap_or(&"Unknown".to_string())
-            )
-            .into(),
+async fn handler(req: Request) -> Response {
+    (
+        http::Status::Ok,
+        format!(
+            "Hello Rymo {} method from {}",
+            req.method,
+            req.headers
+                .get("User-Agent")
+                .unwrap_or(&"Unknown".to_string())
         )
-    };
-    Box::pin(task)
+        .into(),
+    )
 }
