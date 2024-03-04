@@ -46,16 +46,16 @@ impl Display for Status {
 }
 
 pub struct Request {
-    pub path: &'static str,
-    pub method: &'static str,
-    pub headers: HashMap<&'static str, &'static str>,
+    pub path: String,
+    pub method: String,
+    pub headers: HashMap<String, String>,
 }
 
 impl Default for Request {
     fn default() -> Self {
         Self {
-            path: "",
-            method: "",
+            path: "".to_owned(),
+            method: "".to_owned(),
             headers: HashMap::new(),
         }
     }
@@ -80,16 +80,19 @@ impl Request {
                         let str = std::str::from_utf8(&r)?;
                         match i {
                             0 => {
-                                req.method = str;
+                                req.method = str.to_owned();
                                 anyhow::Ok(())
                             }
-                            1 => anyhow::Ok(()),
+                            1 => {
+                                req.path = str.to_owned();
+                                anyhow::Ok(())
+                            }
                             2 => anyhow::Ok(()),
-                            _ => bail!(":"),
+                            _ => bail!(""),
                         }
                     })
                 } else {
-                    let head = std::str::from_utf8(&l)?;
+                    let head = std::str::from_utf8(&l)?.split(": ");
                     dbg!(head);
                     Ok(())
                 }

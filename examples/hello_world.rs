@@ -38,6 +38,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handler<'b>(req: Request<'b>) -> Response {
+async fn handler(req: Request) -> Response {
     todo!();
 }
