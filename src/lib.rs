@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
+    io::BufRead,
     sync::Arc,
 };
 
@@ -7,7 +8,7 @@ use anyhow::anyhow;
 use futures::Future;
 use log::error;
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncBufReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
@@ -104,13 +105,18 @@ where
     let (reader, mut writer) = socket.split();
 
     let headers = read_headers(reader).await?;
-    let mut headers: VecDeque<_> = headers.lines().collect();
-    let route = headers
-        .pop_front()
-        .ok_or(anyhow!("popup route stack failed"))?;
-    let headers = collect_headers(headers.into());
+    let req = Request::parse_from_bytes(headers.clone())?;
+    dbg!(req.path);
 
-    let request_path: Vec<_> = route.split(' ').collect();
+    // let test = std::str::from_utf8(&headers).map_err(|e| anyhow!("{e}"))?;
+    // let route = test.split(" ");
+    // dbg!(route);
+    /* .pop_front()
+    .ok_or(anyhow!("popup route stack failed"))?; */
+    let headers = collect_headers(headers.into());
+    todo!();
+
+    /* let request_path: Vec<String> = vec![];
     let request_method = request_path
         .first()
         .ok_or(Error::InvalidRequest("missing request method".into()))?;
@@ -145,5 +151,5 @@ where
             writer.write_all(response.as_bytes()).await?;
             Ok(())
         } // 404
-    }
+    } */
 }

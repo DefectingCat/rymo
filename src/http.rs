@@ -1,8 +1,8 @@
 use std::{collections::HashMap, fmt::Display};
 
-use anyhow::Result;
-use bytes::Bytes;
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use anyhow::{bail, Result};
+use bytes::{BufMut, Bytes, BytesMut};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 
 pub struct Response(pub Status, pub Bytes);
 
@@ -46,47 +46,86 @@ impl Display for Status {
 }
 
 pub struct Request {
-    pub path: String,
-    pub method: String,
-    pub headers: HashMap<String, String>,
+    pub path: &'static str,
+    pub method: &'static str,
+    pub headers: HashMap<&'static str, &'static str>,
+}
+
+impl Default for Request {
+    fn default() -> Self {
+        Self {
+            path: "",
+            method: "",
+            headers: HashMap::new(),
+        }
+    }
 }
 
 impl Request {
-    pub fn new<S: Display>(path: S, method: S, headers: HashMap<String, String>) -> Self {
-        Self {
-            path: path.to_string(),
-            method: method.to_string(),
-            headers,
-        }
+    pub fn parse_from_bytes(bytes: Bytes) -> Result<Self> {
+        let mut req = Self::default();
+
+        let lines = bytes
+            .split(|&b| b == b'\n')
+            .map(|line| line.strip_suffix(b"\r").unwrap_or(line));
+        lines
+            .filter(|l| l.len() > 0)
+            .enumerate()
+            .try_for_each(|(i, l)| {
+                // the first line is route path
+                // GET /v1/ HTTP/1.1
+                if i == 0 {
+                    let route = l.split(|&b| b == b' ');
+                    route.enumerate().try_for_each(|(i, r)| {
+                        let str = std::str::from_utf8(&r)?;
+                        match i {
+                            0 => {
+                                req.method = str;
+                                anyhow::Ok(())
+                            }
+                            1 => anyhow::Ok(()),
+                            2 => anyhow::Ok(()),
+                            _ => bail!(":"),
+                        }
+                    })
+                } else {
+                    let head = std::str::from_utf8(&l)?;
+                    dbg!(head);
+                    Ok(())
+                }
+            })?;
+        Ok(req)
     }
 }
 
 /// Read bytes from reader to string
 /// but not common headers, include first line like GET / HTTP/1.1
-pub async fn read_headers<R>(reader: R) -> Result<String>
+/// 13 10 13 10
+/// \r \n \r \n
+pub async fn read_headers<R>(mut reader: R) -> Result<Bytes>
 where
     R: AsyncRead + Unpin,
 {
-    let mut request_string = String::new();
-    let mut reader = BufReader::new(reader);
+    let mut buffer = BytesMut::with_capacity(512);
     loop {
-        let byte = reader.read_line(&mut request_string).await?;
-        if byte < 3 {
-            break;
+        let n = reader.read_u8().await?;
+        buffer.put_u8(n);
+        let len = buffer.len();
+        if len < 4 {
+            // TODO: handle header less than 4 bytes
+        } else {
+            let last_four = &buffer[len - 4..len];
+            if last_four == b"\r\n\r\n" {
+                println!("breaking");
+                break;
+            }
         }
     }
-    Ok(request_string)
+    let headers = buffer.freeze();
+    Ok(headers.clone())
 }
 
 /// Collect request string with Hashmap to headers.
-pub fn collect_headers(request: Vec<&str>) -> HashMap<String, String> {
-    let mut headers = HashMap::new();
-    request.iter().for_each(|header| {
-        if let Some(head) = header.split_once(": ") {
-            headers
-                .entry(head.0.to_string())
-                .or_insert(head.1.to_string());
-        }
-    });
-    headers
+pub fn collect_headers(request: Bytes) -> HashMap<String, String> {
+    todo!();
 }
