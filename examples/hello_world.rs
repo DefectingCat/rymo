@@ -39,5 +39,5 @@ async fn main() -> Result<()> {
 }
 
 async fn handler(req: Request) -> Response {
-    todo!();
+    Response(http::Status::Ok, req.body.into())
 }

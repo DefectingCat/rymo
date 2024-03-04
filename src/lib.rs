@@ -1,9 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
+use anyhow::anyhow;
+use bytes::Bytes;
 use futures::Future;
 use log::error;
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
@@ -100,8 +102,17 @@ where
     let (reader, mut writer) = socket.split();
 
     // build client request
-    let headers = read_headers(reader).await?;
-    let req = Request::parse_from_bytes(headers.clone())?;
+    let (headers, mut reader) = read_headers(reader).await?;
+    let mut req = Request::parse_from_bytes(headers.clone())?;
+
+    // parse body
+    let content = req.headers.get("content-length");
+    if let Some(len) = content {
+        let len: usize = len.parse().map_err(|e| anyhow!("{e}"))?;
+        let mut buffer = vec![0u8; len];
+        reader.read_exact(&mut buffer).await?;
+        req.body = Bytes::from(buffer);
+    }
 
     // Registries routes
     let routes = routes.read().await;

@@ -50,6 +50,7 @@ pub struct Request {
     pub method: String,
     pub version: String,
     pub headers: HashMap<String, String>,
+    pub body: Bytes,
 }
 
 impl Default for Request {
@@ -59,6 +60,7 @@ impl Default for Request {
             method: "".to_owned(),
             version: "".to_owned(),
             headers: HashMap::new(),
+            body: Bytes::new(),
         }
     }
 }
@@ -135,6 +137,7 @@ impl Request {
             .filter(|l| l.len() > 0)
             .enumerate()
             .try_for_each(collect_headers)?;
+
         Ok(req)
     }
 }
@@ -143,7 +146,7 @@ impl Request {
 /// but not common headers, include first line like GET / HTTP/1.1
 /// 13 10 13 10
 /// \r \n \r \n
-pub async fn read_headers<R>(mut reader: R) -> Result<Bytes>
+pub async fn read_headers<R>(mut reader: R) -> Result<(Bytes, R)>
 where
     R: AsyncRead + Unpin,
 {
@@ -157,11 +160,11 @@ where
         } else {
             let last_four = &buffer[len - 4..len];
             if last_four == b"\r\n\r\n" {
-                println!("breaking");
+                // println!("breaking");
                 break;
             }
         }
     }
     let headers = buffer.freeze();
-    Ok(headers.clone())
+    Ok((headers.clone(), reader))
 }
