@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use anyhow::{bail, Result};
 use bytes::{BufMut, Bytes, BytesMut};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 pub struct Response(pub Status, pub Bytes);
 
@@ -65,6 +65,7 @@ impl Request {
     pub fn parse_from_bytes(bytes: Bytes) -> Result<Self> {
         let mut req = Self::default();
 
+        // GET /v1/ HTTP/1.1\r\nUser-Agent: ua\r\n ..
         let lines = bytes
             .split(|&b| b == b'\n')
             .map(|line| line.strip_suffix(b"\r").unwrap_or(line));
@@ -77,23 +78,48 @@ impl Request {
                 if i == 0 {
                     let route = l.split(|&b| b == b' ');
                     route.enumerate().try_for_each(|(i, r)| {
-                        let str = std::str::from_utf8(&r)?;
+                        let str = std::str::from_utf8(r)?;
                         match i {
                             0 => {
+                                // GET
                                 req.method = str.to_owned();
                                 anyhow::Ok(())
                             }
                             1 => {
+                                // /v1/
                                 req.path = str.to_owned();
                                 anyhow::Ok(())
                             }
-                            2 => anyhow::Ok(()),
+                            2 => {
+                                // HTTP/1.1
+                                anyhow::Ok(())
+                            }
                             _ => bail!(""),
                         }
                     })
+                    // the second line is headers until \r\n\r\n
                 } else {
-                    let head = std::str::from_utf8(&l)?.split(": ");
-                    dbg!(head);
+                    let heads = std::str::from_utf8(&l)?.split(": ");
+                    let (k, v) = heads.enumerate().try_fold(
+                        (String::new(), String::new()),
+                        |mut prev, (i, h)| {
+                            match i {
+                                // User-Agent: ua
+                                0 => {
+                                    // User-Agent
+                                    prev.0 = h.to_lowercase().to_owned();
+                                    anyhow::Ok(prev)
+                                }
+                                1 => {
+                                    // ua
+                                    prev.1 = h.to_owned();
+                                    anyhow::Ok(prev)
+                                }
+                                _ => bail!(""),
+                            }
+                        },
+                    )?;
+                    req.headers.entry(k).or_insert(v);
                     Ok(())
                 }
             })?;
@@ -126,9 +152,4 @@ where
     }
     let headers = buffer.freeze();
     Ok(headers.clone())
-}
-
-/// Collect request string with Hashmap to headers.
-pub fn collect_headers(request: Bytes) -> HashMap<String, String> {
-    todo!();
 }

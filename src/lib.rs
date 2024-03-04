@@ -1,22 +1,17 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    io::BufRead,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
-use anyhow::anyhow;
 use futures::Future;
 use log::error;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt},
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
 
 pub use http::Response;
-use http::{collect_headers, read_headers, IntoResponse, Request, Status};
+use http::{read_headers, IntoResponse, Request, Status};
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 pub mod error;
 pub mod http;
@@ -104,35 +99,30 @@ where
 {
     let (reader, mut writer) = socket.split();
 
-    let headers = read_headers(reader).await?;
-    let req = Request::parse_from_bytes(headers.clone())?;
-    dbg!(req.path);
-
     // let test = std::str::from_utf8(&headers).map_err(|e| anyhow!("{e}"))?;
     // let route = test.split(" ");
     // dbg!(route);
     /* .pop_front()
     .ok_or(anyhow!("popup route stack failed"))?; */
-    let headers = collect_headers(headers.into());
-    todo!();
 
-    /* let request_path: Vec<String> = vec![];
-    let request_method = request_path
-        .first()
-        .ok_or(Error::InvalidRequest("missing request method".into()))?;
-    let request_path = request_path
-        .get(1)
-        .ok_or(anyhow!("cannot find route handler"))?;
+    // let request_path: Vec<String> = vec![];
+    // let request_method = request_path
+    //     .first()
+    //     .ok_or(Error::InvalidRequest("missing request method".into()))?;
+    // let request_path = request_path
+    //     .get(1)
+    //     .ok_or(anyhow!("cannot find route handler"))?;
 
     // build client request
-    let req = Request::new(request_path, request_method, headers);
+    let headers = read_headers(reader).await?;
+    let req = Request::parse_from_bytes(headers.clone())?;
 
     // Registries routes
     let routes = routes.read().await;
-    let route_handler = routes.get(request_path);
+    let route_handler = routes.get(req.path.as_str());
     match route_handler {
         Some(handler) => {
-            let method = handler.get(request_method.to_lowercase().as_str());
+            let method = handler.get(req.method.to_lowercase().as_str());
             match method {
                 Some(route_handler) => {
                     let resp = route_handler(req).await.into_response();
@@ -151,5 +141,5 @@ where
             writer.write_all(response.as_bytes()).await?;
             Ok(())
         } // 404
-    } */
+    }
 }
