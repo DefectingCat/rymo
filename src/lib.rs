@@ -99,20 +99,6 @@ where
 {
     let (reader, mut writer) = socket.split();
 
-    // let test = std::str::from_utf8(&headers).map_err(|e| anyhow!("{e}"))?;
-    // let route = test.split(" ");
-    // dbg!(route);
-    /* .pop_front()
-    .ok_or(anyhow!("popup route stack failed"))?; */
-
-    // let request_path: Vec<String> = vec![];
-    // let request_method = request_path
-    //     .first()
-    //     .ok_or(Error::InvalidRequest("missing request method".into()))?;
-    // let request_path = request_path
-    //     .get(1)
-    //     .ok_or(anyhow!("cannot find route handler"))?;
-
     // build client request
     let headers = read_headers(reader).await?;
     let req = Request::parse_from_bytes(headers.clone())?;

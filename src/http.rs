@@ -48,6 +48,7 @@ impl Display for Status {
 pub struct Request {
     pub path: String,
     pub method: String,
+    pub version: String,
     pub headers: HashMap<String, String>,
 }
 
@@ -56,6 +57,7 @@ impl Default for Request {
         Self {
             path: "".to_owned(),
             method: "".to_owned(),
+            version: "".to_owned(),
             headers: HashMap::new(),
         }
     }
@@ -69,60 +71,70 @@ impl Request {
         let lines = bytes
             .split(|&b| b == b'\n')
             .map(|line| line.strip_suffix(b"\r").unwrap_or(line));
-        lines
-            .filter(|l| l.len() > 0)
-            .enumerate()
-            .try_for_each(|(i, l)| {
-                // the first line is route path
-                // GET /v1/ HTTP/1.1
-                if i == 0 {
-                    let route = l.split(|&b| b == b' ');
-                    route.enumerate().try_for_each(|(i, r)| {
+
+        let collect_headers = |(i, l): (usize, &[u8])| {
+            // the first line is route path
+            // GET /v1/ HTTP/1.1
+            if i == 0 {
+                let route = l.split(|&b| b == b' ');
+                let (method, path, version) = route.enumerate().try_fold(
+                    (String::new(), String::new(), String::new()),
+                    |mut prev, (i, r)| {
                         let str = std::str::from_utf8(r)?;
                         match i {
                             0 => {
                                 // GET
-                                req.method = str.to_owned();
-                                anyhow::Ok(())
+                                prev.0 = str.to_owned();
+                                anyhow::Ok(prev)
                             }
                             1 => {
                                 // /v1/
-                                req.path = str.to_owned();
-                                anyhow::Ok(())
+                                prev.1 = str.to_owned();
+                                anyhow::Ok(prev)
                             }
                             2 => {
                                 // HTTP/1.1
-                                anyhow::Ok(())
+                                prev.2 = str.to_owned();
+                                anyhow::Ok(prev)
                             }
                             _ => bail!(""),
                         }
-                    })
-                    // the second line is headers until \r\n\r\n
-                } else {
-                    let heads = std::str::from_utf8(&l)?.split(": ");
-                    let (k, v) = heads.enumerate().try_fold(
-                        (String::new(), String::new()),
-                        |mut prev, (i, h)| {
-                            match i {
-                                // User-Agent: ua
-                                0 => {
-                                    // User-Agent
-                                    prev.0 = h.to_lowercase().to_owned();
-                                    anyhow::Ok(prev)
-                                }
-                                1 => {
-                                    // ua
-                                    prev.1 = h.to_owned();
-                                    anyhow::Ok(prev)
-                                }
-                                _ => bail!(""),
+                    },
+                )?;
+                req.method = method;
+                req.path = path;
+                req.version = version;
+                anyhow::Ok(())
+                // the second line is headers until \r\n\r\n
+            } else {
+                let heads = std::str::from_utf8(&l)?.split(": ");
+                let (k, v) = heads.enumerate().try_fold(
+                    (String::new(), String::new()),
+                    |mut prev, (i, h)| {
+                        match i {
+                            // User-Agent: ua
+                            0 => {
+                                // User-Agent
+                                prev.0 = h.to_lowercase().to_owned();
+                                anyhow::Ok(prev)
                             }
-                        },
-                    )?;
-                    req.headers.entry(k).or_insert(v);
-                    Ok(())
-                }
-            })?;
+                            1 => {
+                                // ua
+                                prev.1 = h.to_owned();
+                                anyhow::Ok(prev)
+                            }
+                            _ => bail!(""),
+                        }
+                    },
+                )?;
+                req.headers.entry(k).or_insert(v);
+                Ok(())
+            }
+        };
+        lines
+            .filter(|l| l.len() > 0)
+            .enumerate()
+            .try_for_each(collect_headers)?;
         Ok(req)
     }
 }
