@@ -1,11 +1,8 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
-use anyhow::anyhow;
+use error::Error;
 use futures::Future;
-use log::error;
+use log::{error, info};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
@@ -13,9 +10,9 @@ use tokio::{
 };
 
 pub use http::Response;
-use http::{collect_headers, read_headers, IntoResponse, Request, Status};
+use http::{drop_body, read_body, read_headers, IntoResponse, Request, Status};
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 pub mod error;
 pub mod http;
@@ -53,13 +50,14 @@ where
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
 
         loop {
-            let (socket, _) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
+            info!("accept connection from {}", addr);
             let routes = self.routes.clone();
             let task = async move {
                 match process(socket, routes).await {
                     Ok(_) => {}
                     Err(err) => {
-                        error!("ERROR: handle route failed {}", err);
+                        error!("handle route failed {}", err);
                     }
                 }
             };
@@ -103,47 +101,39 @@ where
 {
     let (reader, mut writer) = socket.split();
 
-    let headers = read_headers(reader).await?;
-    let mut headers: VecDeque<_> = headers.lines().collect();
-    let route = headers
-        .pop_front()
-        .ok_or(anyhow!("popup route stack failed"))?;
-    let headers = collect_headers(headers.into());
-
-    let request_path: Vec<_> = route.split(' ').collect();
-    let request_method = request_path
-        .first()
-        .ok_or(Error::InvalidRequest("missing request method".into()))?;
-    let request_path = request_path
-        .get(1)
-        .ok_or(anyhow!("cannot find route handler"))?;
-
     // build client request
-    let req = Request::new(request_path, request_method, headers);
+    let (headers, reader) = read_headers(reader)
+        .await
+        .map_err(|e| Error::InvalidRequest(format!("read headers failed {}", e)))?;
+    let mut req = Request::parse_from_bytes(headers.clone())
+        .map_err(|e| Error::InvalidRequest(format!("parse headers from bytes failed {}", e)))?;
+
+    // parse body
+    let content_len = req.headers.get("content-length");
 
     // Registries routes
     let routes = routes.read().await;
-    let route_handler = routes.get(request_path);
-    match route_handler {
+    let route_handler = routes.get(req.path.as_str());
+    let response = match route_handler {
         Some(handler) => {
-            let method = handler.get(request_method.to_lowercase().as_str());
+            let method = handler.get(req.method.to_lowercase().as_str());
+            if let Some(len) = content_len {
+                let (body, _) = read_body(reader, len)
+                    .await
+                    .map_err(|e| Error::InternalServerError(e))?;
+                req.body = body;
+            }
             match method {
-                Some(route_handler) => {
-                    let resp = route_handler(req).await.into_response();
-                    writer.write_all(&resp).await?;
-                    Ok(())
-                }
-                None => {
-                    let response = format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed);
-                    writer.write_all(response.as_bytes()).await?;
-                    Ok(())
-                } // Method not allow
+                Some(route_handler) => route_handler(req).await.into_response(),
+                None => format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed).into(), // Method not allow
             }
         }
         None => {
-            let response = format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound);
-            writer.write_all(response.as_bytes()).await?;
-            Ok(())
+            drop_body(reader, content_len.map(|c| c.as_str())).await?;
+            format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).into()
         } // 404
-    }
+    };
+    writer.write_all(&response).await?;
+    writer.flush().await?;
+    Ok(())
 }

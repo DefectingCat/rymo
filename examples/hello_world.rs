@@ -18,9 +18,7 @@ pub fn init_logger() {
         .with_target(false)
         .with_writer(std::io::stdout);
 
-    let env_layer = EnvFilter::try_from_env("RYMO_LOG").unwrap_or_else(|_| {
-        format!("{}=info,tower_http=info,axum=info", env!("CARGO_PKG_NAME")).into()
-    });
+    let env_layer = EnvFilter::try_from_env("RYMO_LOG").unwrap_or_else(|_| "info".into());
 
     registry().with(env_layer).with(formatting_layer).init();
 }
@@ -41,15 +39,5 @@ async fn main() -> Result<()> {
 }
 
 async fn handler(req: Request) -> Response {
-    Response(
-        http::Status::Ok,
-        format!(
-            "Hello Rymo {} method from {}",
-            req.method,
-            req.headers
-                .get("User-Agent")
-                .unwrap_or(&"Unknown".to_string())
-        )
-        .into(),
-    )
+    Response(http::Status::Ok, req.body.into())
 }
