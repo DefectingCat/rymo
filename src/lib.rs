@@ -1,17 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::anyhow;
-use bytes::Bytes;
 use futures::Future;
 use log::error;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
 
 pub use http::Response;
-use http::{read_headers, IntoResponse, Request, Status};
+use http::{drop_body, read_body, read_headers, IntoResponse, Request, Status};
 
 use crate::error::Result;
 
@@ -102,17 +100,11 @@ where
     let (reader, mut writer) = socket.split();
 
     // build client request
-    let (headers, mut reader) = read_headers(reader).await?;
+    let (headers, reader) = read_headers(reader).await?;
     let mut req = Request::parse_from_bytes(headers.clone())?;
 
     // parse body
-    let content = req.headers.get("content-length");
-    if let Some(len) = content {
-        let len: usize = len.parse().map_err(|e| anyhow!("{e}"))?;
-        let mut buffer = vec![0u8; len];
-        reader.read_exact(&mut buffer).await?;
-        req.body = Bytes::from(buffer);
-    }
+    let content_len = req.headers.get("content-length");
 
     // Registries routes
     let routes = routes.read().await;
@@ -120,6 +112,10 @@ where
     match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
+            if let Some(len) = content_len {
+                let (body, _) = read_body(reader, len).await?;
+                req.body = body;
+            }
             match method {
                 Some(route_handler) => {
                     let resp = route_handler(req).await.into_response();
@@ -134,6 +130,7 @@ where
             }
         }
         None => {
+            drop_body(reader, content_len.map(|c| c.as_str())).await?;
             let response = format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound);
             writer.write_all(response.as_bytes()).await?;
             Ok(())

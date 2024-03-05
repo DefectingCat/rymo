@@ -1,8 +1,8 @@
 use std::{collections::HashMap, fmt::Display};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use bytes::{BufMut, Bytes, BytesMut};
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{self, AsyncRead, AsyncReadExt};
 
 pub struct Response(pub Status, pub Bytes);
 
@@ -167,4 +167,29 @@ where
     }
     let headers = buffer.freeze();
     Ok((headers.clone(), reader))
+}
+
+pub async fn read_body<R>(mut reader: R, len: &str) -> Result<(Bytes, R)>
+where
+    R: AsyncRead + Unpin,
+{
+    let len: usize = len.parse().map_err(|e| anyhow!("{e}"))?;
+    let mut buffer = vec![0u8; len];
+    reader.read_exact(&mut buffer).await?;
+    let buffer = Bytes::copy_from_slice(&buffer);
+    Ok((buffer, reader))
+}
+
+pub async fn drop_body<R>(reader: R, len: Option<&str>) -> Result<()>
+where
+    R: AsyncRead + Unpin,
+{
+    if let Some(len) = len {
+        let len: u64 = len.parse().map_err(|e| anyhow!("{e}"))?;
+        let mut r = reader.take(len);
+        let mut null = io::empty();
+        io::copy(&mut r, &mut null).await?;
+    } else {
+    }
+    Ok(())
 }
