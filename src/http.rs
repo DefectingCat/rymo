@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, io::ErrorKind};
 
 use anyhow::{anyhow, bail, Result};
 use bytes::{BufMut, Bytes, BytesMut};
@@ -152,16 +152,29 @@ where
 {
     let mut buffer = BytesMut::with_capacity(512);
     loop {
-        let n = reader.read_u8().await?;
-        buffer.put_u8(n);
-        let len = buffer.len();
-        if len < 4 {
-            // TODO: handle header less than 4 bytes
-        } else {
-            let last_four = &buffer[len - 4..len];
-            if last_four == b"\r\n\r\n" {
-                // println!("breaking");
+        let res = reader.read_u8().await;
+        match res {
+            Ok(n) if n == 0 => {
                 break;
+            }
+            Ok(n) => {
+                buffer.put_u8(n);
+                let len = buffer.len();
+                if len < 4 {
+                    // TODO: handle header less than 4 bytes
+                } else {
+                    let last_four = &buffer[len - 4..len];
+                    if last_four == b"\r\n\r\n" {
+                        // println!("breaking");
+                        break;
+                    }
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                return Ok((buffer.freeze(), reader));
+            }
+            Err(e) => {
+                return Err(e.into());
             }
         }
     }

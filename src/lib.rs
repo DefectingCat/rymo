@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use error::Error;
 use futures::Future;
 use log::error;
 use tokio::{
@@ -100,8 +101,11 @@ where
     let (reader, mut writer) = socket.split();
 
     // build client request
-    let (headers, reader) = read_headers(reader).await?;
-    let mut req = Request::parse_from_bytes(headers.clone())?;
+    let (headers, reader) = read_headers(reader)
+        .await
+        .map_err(|e| Error::InvalidRequest(format!("read headers failed {}", e)))?;
+    let mut req = Request::parse_from_bytes(headers.clone())
+        .map_err(|e| Error::InvalidRequest(format!("parse headers from bytes failed {}", e)))?;
 
     // parse body
     let content_len = req.headers.get("content-length");
@@ -109,31 +113,26 @@ where
     // Registries routes
     let routes = routes.read().await;
     let route_handler = routes.get(req.path.as_str());
-    match route_handler {
+    let response = match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
             if let Some(len) = content_len {
-                let (body, _) = read_body(reader, len).await?;
+                let (body, _) = read_body(reader, len)
+                    .await
+                    .map_err(|e| Error::InternalServerError(e))?;
                 req.body = body;
             }
             match method {
-                Some(route_handler) => {
-                    let resp = route_handler(req).await.into_response();
-                    writer.write_all(&resp).await?;
-                    Ok(())
-                }
-                None => {
-                    let response = format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed);
-                    writer.write_all(response.as_bytes()).await?;
-                    Ok(())
-                } // Method not allow
+                Some(route_handler) => route_handler(req).await.into_response(),
+                None => format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed).into(), // Method not allow
             }
         }
         None => {
             drop_body(reader, content_len.map(|c| c.as_str())).await?;
-            let response = format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound);
-            writer.write_all(response.as_bytes()).await?;
-            Ok(())
+            format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).into()
         } // 404
-    }
+    };
+    writer.write_all(&response).await?;
+    writer.flush().await?;
+    Ok(())
 }
