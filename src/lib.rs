@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use error::Error;
 use futures::Future;
-use log::error;
+use log::{error, info};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
@@ -50,13 +50,14 @@ where
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
 
         loop {
-            let (socket, _) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
+            info!("accept connection from {}", addr);
             let routes = self.routes.clone();
             let task = async move {
                 match process(socket, routes).await {
                     Ok(_) => {}
                     Err(err) => {
-                        error!("ERROR: handle route failed {}", err);
+                        error!("handle route failed {}", err);
                     }
                 }
             };
