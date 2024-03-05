@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Display, io::ErrorKind};
 
 use anyhow::{anyhow, bail, Result};
 use bytes::{BufMut, Bytes, BytesMut};
+use log::trace;
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 
 pub struct Response(pub Status, pub Bytes);
@@ -81,27 +82,7 @@ impl Request {
                 let route = l.split(|&b| b == b' ');
                 let (method, path, version) = route.enumerate().try_fold(
                     (String::new(), String::new(), String::new()),
-                    |mut prev, (i, r)| {
-                        let str = std::str::from_utf8(r)?;
-                        match i {
-                            0 => {
-                                // GET
-                                prev.0 = str.to_owned();
-                                anyhow::Ok(prev)
-                            }
-                            1 => {
-                                // /v1/
-                                prev.1 = str.to_owned();
-                                anyhow::Ok(prev)
-                            }
-                            2 => {
-                                // HTTP/1.1
-                                prev.2 = str.to_owned();
-                                anyhow::Ok(prev)
-                            }
-                            _ => bail!(""),
-                        }
-                    },
+                    fold_first_line,
                 )?;
                 req.method = method;
                 req.path = path;
@@ -110,25 +91,9 @@ impl Request {
                 // the second line is headers until \r\n\r\n
             } else {
                 let heads = std::str::from_utf8(&l)?.split(": ");
-                let (k, v) = heads.enumerate().try_fold(
-                    (String::new(), String::new()),
-                    |mut prev, (i, h)| {
-                        match i {
-                            // User-Agent: ua
-                            0 => {
-                                // User-Agent
-                                prev.0 = h.to_lowercase().to_owned();
-                                anyhow::Ok(prev)
-                            }
-                            1 => {
-                                // ua
-                                prev.1 = h.to_owned();
-                                anyhow::Ok(prev)
-                            }
-                            _ => bail!(""),
-                        }
-                    },
-                )?;
+                let (k, v) = heads
+                    .enumerate()
+                    .try_fold((String::new(), String::new()), fold_headers)?;
                 req.headers.entry(k).or_insert(v);
                 Ok(())
             }
@@ -165,7 +130,7 @@ where
                 } else {
                     let last_four = &buffer[len - 4..len];
                     if last_four == b"\r\n\r\n" {
-                        // println!("breaking");
+                        trace!("breaking read headers");
                         break;
                     }
                 }
@@ -182,6 +147,7 @@ where
     Ok((headers.clone(), reader))
 }
 
+/// Read client request body by it's content-length
 pub async fn read_body<R>(mut reader: R, len: &str) -> Result<(Bytes, R)>
 where
     R: AsyncRead + Unpin,
@@ -193,6 +159,7 @@ where
     Ok((buffer, reader))
 }
 
+/// Pull all body into tokio::io::empty
 pub async fn drop_body<R>(reader: R, len: Option<&str>) -> Result<()>
 where
     R: AsyncRead + Unpin,
@@ -205,4 +172,60 @@ where
     } else {
     }
     Ok(())
+}
+
+// TODO: error handle
+
+/// Collect http first line in headers
+/// The first line is route path
+/// GET /v1/ HTTP/1.1
+///
+/// ## Arguments
+///
+/// - prev: (method, path, version)
+fn fold_first_line(
+    mut prev: (String, String, String),
+    (i, r): (usize, &[u8]),
+) -> Result<(String, String, String)> {
+    let str = std::str::from_utf8(r)?;
+    match i {
+        0 => {
+            // GET
+            prev.0 = str.to_owned();
+            anyhow::Ok(prev)
+        }
+        1 => {
+            // /v1/
+            prev.1 = str.to_owned();
+            anyhow::Ok(prev)
+        }
+        2 => {
+            // HTTP/1.1
+            prev.2 = str.to_owned();
+            anyhow::Ok(prev)
+        }
+        _ => bail!(""),
+    }
+}
+
+/// Collect headers into hashmap
+///
+/// ## Arguments
+///
+/// - prev: (key, value) for hashmap
+fn fold_headers(mut prev: (String, String), (i, h): (usize, &str)) -> Result<(String, String)> {
+    match i {
+        // User-Agent: ua
+        0 => {
+            // User-Agent
+            prev.0 = h.to_lowercase().to_owned();
+            anyhow::Ok(prev)
+        }
+        1 => {
+            // ua
+            prev.1 = h.to_owned();
+            anyhow::Ok(prev)
+        }
+        _ => bail!(""),
+    }
 }
