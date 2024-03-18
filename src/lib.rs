@@ -104,9 +104,9 @@ where
     // build client request
     let (headers, reader) = read_headers(reader)
         .await
-        .map_err(|e| Error::InvalidRequest(format!("read headers failed {}", e)))?;
+        .map_err(|e| Error::BadRequest(format!("read headers failed {}", e)))?;
     let mut req = Request::parse_from_bytes(headers.clone())
-        .map_err(|e| Error::InvalidRequest(format!("parse headers from bytes failed {}", e)))?;
+        .map_err(|e| Error::BadRequest(format!("parse headers from bytes failed {}", e)))?;
 
     // parse body
     let content_len = req.headers.get("content-length");

@@ -3,7 +3,7 @@ use anyhow::anyhow;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("invalid request {0}")]
-    InvalidRequest(String),
+    BadRequest(String),
     #[error("server internal error {0}")]
     InternalServerError(anyhow::Error),
 }

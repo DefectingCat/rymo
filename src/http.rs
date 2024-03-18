@@ -5,6 +5,8 @@ use bytes::{BufMut, Bytes, BytesMut};
 use log::trace;
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 
+use crate::error::Error;
+
 pub struct Response(pub Status, pub Bytes);
 
 pub trait IntoResponse {
@@ -126,7 +128,7 @@ where
                 buffer.put_u8(n);
                 let len = buffer.len();
                 if len < 4 {
-                    // TODO: handle header less than 4 bytes
+                    return Err(Error::BadRequest("heades too short".to_owned()).into());
                 } else {
                     let last_four = &buffer[len - 4..len];
                     if last_four == b"\r\n\r\n" {
