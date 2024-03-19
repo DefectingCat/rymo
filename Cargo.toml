@@ -23,6 +23,8 @@ tokio = { version = "1.36.0", features = [
 dotenvy = "0.15.7"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+serde = "1.0.197"
+serde_json = "1.0.114"
 
 [profile.release]
 lto = true
