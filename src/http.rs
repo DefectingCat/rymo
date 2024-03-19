@@ -5,7 +5,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use log::trace;
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 
-use crate::error::Error;
+
 
 pub struct Response(pub Status, pub Bytes);
 
@@ -26,6 +26,7 @@ pub enum Status {
     InternalServer,
     NotFound,
     MethodNotAllowed,
+    BadRequest,
 }
 
 impl From<&Status> for &str {
@@ -37,6 +38,7 @@ impl From<&Status> for &str {
             InternalServer => "500 Internal Server Error",
             NotFound => "404 Not Found",
             MethodNotAllowed => "405 Method Not Allowed",
+            BadRequest => "400 Bad Request",
         }
     }
 }
@@ -128,7 +130,7 @@ where
                 buffer.put_u8(n);
                 let len = buffer.len();
                 if len < 4 {
-                    return Err(Error::BadRequest("heades too short".to_owned()).into());
+                    continue;
                 } else {
                     let last_four = &buffer[len - 4..len];
                     if last_four == b"\r\n\r\n" {

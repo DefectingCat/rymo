@@ -54,9 +54,20 @@ where
             info!("accept connection from {}", addr);
             let routes = self.routes.clone();
             let task = async move {
-                match process(socket, routes).await {
+                let mut socket = socket;
+                match process(&mut socket, routes).await {
                     Ok(_) => {}
                     Err(err) => {
+                        let response = match &err {
+                            Error::BadRequest(_) => {
+                                format!("HTTP/1.1 {}\r\n\r\n", Status::BadRequest)
+                            }
+                            Error::InternalServerError(_) => {
+                                format!("HTTP/1.1 {}\r\n\r\n", Status::InternalServer)
+                            }
+                        };
+                        let _ = socket.write_all(response.as_bytes()).await;
+                        let _ = socket.flush().await;
                         error!("handle route failed {}", err);
                     }
                 }
@@ -92,7 +103,7 @@ http_handler!(trace);
 http_handler!(patch);
 
 pub async fn process<F, Fut>(
-    mut socket: TcpStream,
+    socket: &mut TcpStream,
     routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
 ) -> Result<()>
 where
