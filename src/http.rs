@@ -5,8 +5,6 @@ use bytes::{BufMut, Bytes, BytesMut};
 use log::trace;
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 
-
-
 pub struct Response(pub Status, pub Bytes);
 
 pub trait IntoResponse {
@@ -94,7 +92,7 @@ impl Request {
                 anyhow::Ok(())
                 // the second line is headers until \r\n\r\n
             } else {
-                let heads = std::str::from_utf8(&l)?.split(": ");
+                let heads = std::str::from_utf8(l)?.split(": ");
                 let (k, v) = heads
                     .enumerate()
                     .try_fold((String::new(), String::new()), fold_headers)?;
@@ -103,7 +101,7 @@ impl Request {
             }
         };
         lines
-            .filter(|l| l.len() > 0)
+            .filter(|l| l.is_empty())
             .enumerate()
             .try_for_each(collect_headers)?;
 
@@ -123,7 +121,7 @@ where
     loop {
         let res = reader.read_u8().await;
         match res {
-            Ok(n) if n == 0 => {
+            Ok(0) => {
                 break;
             }
             Ok(n) => {
@@ -173,7 +171,6 @@ where
         let mut r = reader.take(len);
         let mut null = io::empty();
         io::copy(&mut r, &mut null).await?;
-    } else {
     }
     Ok(())
 }

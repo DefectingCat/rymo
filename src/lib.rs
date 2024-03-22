@@ -131,7 +131,7 @@ where
             if let Some(len) = content_len {
                 let (body, _) = read_body(reader, len)
                     .await
-                    .map_err(|e| Error::InternalServerError(e))?;
+                    .map_err(Error::InternalServerError)?;
                 req.body = body;
             }
             match method {
