@@ -5,12 +5,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-anyhow = "1.0.81"
-bytes = "1.5.0"
+anyhow = "1.0.82"
+bytes = "1.6.0"
 futures = "0.3.30"
 log = "0.4.21"
 thiserror = "1.0.58"
-tokio = { version = "1.36.0", features = [
+tokio = { version = "1.37.0", features = [
     "io-util",
     "net",
     "rt",
@@ -24,7 +24,7 @@ dotenvy = "0.15.7"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 serde = "1.0.197"
-serde_json = "1.0.114"
+serde_json = "1.0.115"
 
 [profile.release]
 lto = true
