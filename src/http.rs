@@ -76,6 +76,7 @@ impl Request {
         let lines = bytes
             .split(|&b| b == b'\n')
             .map(|line| line.strip_suffix(b"\r").unwrap_or(line));
+        dbg!(&lines);
 
         let collect_headers = |(i, l): (usize, &[u8])| {
             // the first line is route path

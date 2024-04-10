@@ -1,15 +1,16 @@
 use std::env;
+use std::path::PathBuf;
 
 use anyhow::{Ok, Result};
 use dotenvy::dotenv;
-use tracing::{info, warn};
-use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
-
 use rymo::http::Request;
 use rymo::{
     http::{self},
     Response, Rymo,
 };
+use tokio::fs;
+use tracing::{info, warn};
+use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt, EnvFilter};
 
 pub fn init_logger() {
     let formatting_layer = fmt::layer()
@@ -39,5 +40,9 @@ async fn main() -> Result<()> {
 }
 
 async fn handler(req: Request) -> Response {
-    Response(http::Status::Ok, req.body.into())
+    dbg!("test");
+    let path = PathBuf::from("./public/index.html");
+    let index = fs::read(path).await.expect("test");
+    dbg!("{index:?}");
+    Response(http::Status::Ok, index.into())
 }
