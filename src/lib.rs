@@ -9,8 +9,8 @@ use tokio::{
     sync::RwLock,
 };
 
-pub use http::Response;
-use http::{drop_body, read_body, read_headers, IntoResponse, Request, Status};
+use http::request::{drop_body, read_body, read_headers, Request};
+pub use http::response::{IntoResponse, Response, Status};
 
 use crate::error::Result;
 
@@ -19,8 +19,8 @@ pub mod http;
 
 pub struct Rymo<'a, F, Fut>
 where
-    F: Fn(Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Response>,
+    F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<Response>>,
 {
     /// Current listen port
     pub port: &'a str,
@@ -36,8 +36,8 @@ where
 
 impl<'a, F, Fut> Rymo<'a, F, Fut>
 where
-    F: Fn(Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Response> + Send,
+    F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<Response>>,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
@@ -81,8 +81,8 @@ macro_rules! http_handler {
     ($fn_name:ident) => {
         impl<'a, F, Fut> Rymo<'a, F, Fut>
         where
-            F: Fn(Request) -> Fut + Send + Sync + 'static,
-            Fut: Future<Output = Response>,
+            F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
+            Fut: Future<Output = Result<Response>>,
         {
             pub async fn $fn_name(&self, path: &'static str, handler: F) {
                 let mut routes = self.routes.write().await;
@@ -107,8 +107,8 @@ pub async fn process<F, Fut>(
     routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
 ) -> Result<()>
 where
-    F: Fn(Request) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Response>,
+    F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<Response>>,
 {
     let (reader, mut writer) = socket.split();
 
@@ -125,7 +125,7 @@ where
     // Registries routes
     let routes = routes.read().await;
     let route_handler = routes.get(req.path.as_str());
-    let response = match route_handler {
+    let response: &[u8] = match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
             if let Some(len) = content_len {
@@ -134,14 +134,15 @@ where
                     .map_err(Error::InternalServerError)?;
                 req.body = body;
             }
+            let res = Response {};
             match method {
-                Some(route_handler) => route_handler(req).await.into_response(),
-                None => format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed).into(), // Method not allow
+                Some(route_handler) => route_handler(req, res).await?.into(),
+                None => format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed).as_bytes(), // Method not allow
             }
         }
         None => {
             drop_body(reader, content_len.map(|c| c.as_str())).await?;
-            format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).into()
+            format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).as_bytes()
         } // 404
     };
     writer.write_all(&response).await?;

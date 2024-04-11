@@ -40,9 +40,7 @@ async fn main() -> Result<()> {
 }
 
 async fn handler(req: Request) -> Response {
-    dbg!("test");
     let path = PathBuf::from("./public/index.html");
     let index = fs::read(path).await.expect("test");
-    dbg!("{index:?}");
     Response(http::Status::Ok, index.into())
 }

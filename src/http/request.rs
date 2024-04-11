@@ -5,49 +5,6 @@ use bytes::{BufMut, Bytes, BytesMut};
 use log::trace;
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 
-pub struct Response(pub Status, pub Bytes);
-
-pub trait IntoResponse {
-    fn into_response(self) -> Vec<u8>;
-}
-
-impl IntoResponse for Response {
-    fn into_response(self) -> Vec<u8> {
-        let response = format!("HTTP/1.1 {}\r\n\r\n", self.0);
-        [response.as_bytes(), &self.1].concat()
-    }
-}
-
-#[derive(Debug)]
-pub enum Status {
-    Ok,
-    InternalServer,
-    NotFound,
-    MethodNotAllowed,
-    BadRequest,
-}
-
-impl From<&Status> for &str {
-    fn from(val: &Status) -> Self {
-        use Status::*;
-
-        match val {
-            Ok => "200 OK",
-            InternalServer => "500 Internal Server Error",
-            NotFound => "404 Not Found",
-            MethodNotAllowed => "405 Method Not Allowed",
-            BadRequest => "400 Bad Request",
-        }
-    }
-}
-
-impl Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let status: &'static str = self.into();
-        write!(f, "{}", status)
-    }
-}
-
 pub struct Request {
     pub path: String,
     pub method: String,
