@@ -3,9 +3,9 @@ use std::{collections::HashMap, fmt::Display};
 use bytes::Bytes;
 
 pub struct Response {
-    headers: HashMap<String, String>,
-    body: Bytes,
-    status: Status,
+    pub headers: HashMap<String, String>,
+    pub body: Bytes,
+    pub status: Status,
 }
 
 impl Default for Response {
@@ -30,20 +30,20 @@ impl IntoResponse for Response {
             .map(|(k, v)| format!("{k}: {v}\r\n"))
             .flat_map(|s| s.into_bytes())
             .collect::<Vec<_>>();
-        let headers = [headers, b"\r\n\r\n".to_vec()].concat();
-        let response = format!("HTTP/1.1 {}\r\n\r\n", self.status);
+        let headers = [headers, b"\r\n".to_vec()].concat();
+        let response = format!("HTTP/1.1 {}\r\n", self.status);
         [response.as_bytes(), &headers, &self.body].concat()
     }
 }
 
-impl From<Response> for &[u8] {
-    fn from(_value: Response) -> Self {
-        todo!()
+/* impl From<Response> for &[u8] {
+    fn from(value: Response) -> Self {
+        value.into_response().as_slice()
     }
-}
+} */
 impl From<Response> for Vec<u8> {
-    fn from(_value: Response) -> Self {
-        todo!()
+    fn from(value: Response) -> Self {
+        value.into_response()
     }
 }
 

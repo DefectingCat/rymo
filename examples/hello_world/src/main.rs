@@ -6,7 +6,7 @@ use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
 use rymo::http::request::Request;
-use rymo::http::response::Response;
+use rymo::http::response::{Response, Status};
 use rymo::Rymo;
 
 pub fn init_logger() {
@@ -36,6 +36,11 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handler(_req: Request, res: Response) -> Result<Response> {
+async fn handler(_req: Request, mut res: Response) -> Result<Response> {
+    res.status = Status::Ok;
+    res.headers
+        .entry("Content-Type".to_owned())
+        .or_insert("text/plain".to_owned());
+    res.body = String::from("Hello Rymo!").into();
     Ok(res)
 }
