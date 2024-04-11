@@ -125,7 +125,6 @@ where
     // Registries routes
     let routes = routes.read().await;
     let route_handler = routes.get(req.path.as_str());
-    dbg!(&req.path);
     let response = match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());

@@ -72,12 +72,6 @@ impl Request {
     pub fn parse_from_bytes(bytes: Bytes) -> Result<Self> {
         let mut req = Self::default();
 
-        // GET /v1/ HTTP/1.1\r\nUser-Agent: ua\r\n ..
-        let lines = bytes
-            .split(|&b| b == b'\n')
-            .map(|line| line.strip_suffix(b"\r").unwrap_or(line));
-        dbg!(&lines);
-
         let collect_headers = |(i, l): (usize, &[u8])| {
             // the first line is route path
             // GET /v1/ HTTP/1.1
@@ -101,8 +95,12 @@ impl Request {
                 Ok(())
             }
         };
-        lines
-            .filter(|l| l.is_empty())
+
+        // GET /v1/ HTTP/1.1\r\nUser-Agent: ua\r\n ..
+        bytes
+            .split(|&b| b == b'\n')
+            .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+            .filter(|l| !l.is_empty())
             .enumerate()
             .try_for_each(collect_headers)?;
 
