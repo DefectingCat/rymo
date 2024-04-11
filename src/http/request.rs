@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, io::ErrorKind};
+use std::{collections::HashMap, io::ErrorKind};
 
 use anyhow::{anyhow, bail, Result};
 use bytes::{BufMut, Bytes, BytesMut};

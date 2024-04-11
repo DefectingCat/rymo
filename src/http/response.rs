@@ -8,6 +8,16 @@ pub struct Response {
     status: Status,
 }
 
+impl Default for Response {
+    fn default() -> Self {
+        Self {
+            headers: HashMap::new(),
+            body: Bytes::new(),
+            status: Status::Ok,
+        }
+    }
+}
+
 pub trait IntoResponse {
     fn into_response(self) -> Vec<u8>;
 }
@@ -27,7 +37,12 @@ impl IntoResponse for Response {
 }
 
 impl From<Response> for &[u8] {
-    fn from(value: Response) -> Self {
+    fn from(_value: Response) -> Self {
+        todo!()
+    }
+}
+impl From<Response> for Vec<u8> {
+    fn from(_value: Response) -> Self {
         todo!()
     }
 }

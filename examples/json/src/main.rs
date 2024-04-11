@@ -2,11 +2,9 @@ use std::env;
 
 use anyhow::{Ok, Result};
 use dotenvy::dotenv;
-use rymo::http::Request;
-use rymo::{
-    http::{self},
-    Response, Rymo,
-};
+use rymo::http::request::Request;
+use rymo::http::response::Response;
+use rymo::Rymo;
 use serde_json::json;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt, EnvFilter};
@@ -38,14 +36,15 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handler(req: Request) -> Response {
+async fn handler(req: Request, res: Response) -> Result<Response> {
     let unknown = "Unknown".to_owned();
     let host = req.headers.get("host").unwrap_or(&unknown);
     info!("handle request from {host}",);
 
-    let body = json!({
+    let _body = json!({
         "status": "ok",
         "message": "hello world"
     });
-    Response(http::Status::Ok, body.to_string().into())
+    // Response(http::Status::Ok, body.to_string().into())
+    Ok(res)
 }

@@ -3,11 +3,9 @@ use std::path::PathBuf;
 
 use anyhow::{Ok, Result};
 use dotenvy::dotenv;
-use rymo::http::Request;
-use rymo::{
-    http::{self},
-    Response, Rymo,
-};
+use rymo::http::request::Request;
+use rymo::http::response::Response;
+use rymo::Rymo;
 use tokio::fs;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt, EnvFilter};
@@ -39,8 +37,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handler(req: Request) -> Response {
+async fn handler(_req: Request, res: Response) -> Result<Response> {
     let path = PathBuf::from("./public/index.html");
-    let index = fs::read(path).await.expect("test");
-    Response(http::Status::Ok, index.into())
+    let _index = fs::read(path).await.expect("test");
+    // Response(http::Status::Ok, index.into())
+    Ok(res)
 }

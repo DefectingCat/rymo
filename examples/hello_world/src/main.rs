@@ -5,11 +5,9 @@ use dotenvy::dotenv;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
-use rymo::http::Request;
-use rymo::{
-    http::{self},
-    Response, Rymo,
-};
+use rymo::http::request::Request;
+use rymo::http::response::Response;
+use rymo::Rymo;
 
 pub fn init_logger() {
     let formatting_layer = fmt::layer()
@@ -38,6 +36,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handler(req: Request) -> Response {
-    Response(http::Status::Ok, req.body)
+async fn handler(_req: Request, res: Response) -> Result<Response> {
+    Ok(res)
 }

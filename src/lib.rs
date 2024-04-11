@@ -20,7 +20,7 @@ pub mod http;
 pub struct Rymo<'a, F, Fut>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<Response>>,
+    Fut: Future<Output = anyhow::Result<Response>> + Send,
 {
     /// Current listen port
     pub port: &'a str,
@@ -37,7 +37,7 @@ where
 impl<'a, F, Fut> Rymo<'a, F, Fut>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<Response>>,
+    Fut: Future<Output = anyhow::Result<Response>> + Send,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
@@ -82,7 +82,7 @@ macro_rules! http_handler {
         impl<'a, F, Fut> Rymo<'a, F, Fut>
         where
             F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-            Fut: Future<Output = Result<Response>>,
+            Fut: Future<Output = anyhow::Result<Response>> + Send,
         {
             pub async fn $fn_name(&self, path: &'static str, handler: F) {
                 let mut routes = self.routes.write().await;
@@ -108,7 +108,7 @@ pub async fn process<F, Fut>(
 ) -> Result<()>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = Result<Response>>,
+    Fut: Future<Output = anyhow::Result<Response>> + Send,
 {
     let (reader, mut writer) = socket.split();
 
@@ -125,7 +125,7 @@ where
     // Registries routes
     let routes = routes.read().await;
     let route_handler = routes.get(req.path.as_str());
-    let response: &[u8] = match route_handler {
+    let response = match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
             if let Some(len) = content_len {
@@ -134,15 +134,18 @@ where
                     .map_err(Error::InternalServerError)?;
                 req.body = body;
             }
-            let res = Response {};
+            let res = Response::default();
             match method {
                 Some(route_handler) => route_handler(req, res).await?.into(),
-                None => format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed).as_bytes(), // Method not allow
+                None => {
+                    let res = format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed);
+                    res.into_bytes()
+                } // Method not allow
             }
         }
         None => {
             drop_body(reader, content_len.map(|c| c.as_str())).await?;
-            format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).as_bytes()
+            format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).into_bytes()
         } // 404
     };
     writer.write_all(&response).await?;
