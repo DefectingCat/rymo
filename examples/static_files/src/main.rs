@@ -37,9 +37,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handler(_req: Request, res: Response) -> Result<Response> {
+async fn handler(_req: Request, mut res: Response) -> Result<Response> {
     let path = PathBuf::from("./public/index.html");
-    let _index = fs::read(path).await.expect("test");
-    // Response(http::Status::Ok, index.into())
+    let index = fs::read(path).await?;
+    res.headers.insert(
+        "Content-Type".to_owned(),
+        "text/html; charset=utf-8".to_owned(),
+    );
+    res.body = index.into();
     Ok(res)
 }
