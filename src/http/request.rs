@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::ErrorKind};
+use std::{collections::HashMap, io::ErrorKind, path::PathBuf};
 
 use anyhow::{anyhow, bail, Result};
 use bytes::{BufMut, Bytes, BytesMut};
@@ -6,7 +6,7 @@ use log::trace;
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 
 pub struct Request {
-    pub path: String,
+    pub path: PathBuf,
     pub method: String,
     pub version: String,
     pub headers: HashMap<String, String>,
@@ -16,7 +16,7 @@ pub struct Request {
 impl Default for Request {
     fn default() -> Self {
         Self {
-            path: "".to_owned(),
+            path: PathBuf::new(),
             method: "".to_owned(),
             version: "".to_owned(),
             headers: HashMap::new(),
@@ -26,6 +26,7 @@ impl Default for Request {
 }
 
 impl Request {
+    /// Parse request from HTTP header's bytes that read from tcp.
     pub fn parse_from_bytes(bytes: Bytes) -> Result<Self> {
         let mut req = Self::default();
 
@@ -35,7 +36,7 @@ impl Request {
             if i == 0 {
                 let route = l.split(|&b| b == b' ');
                 let (method, path, version) = route.enumerate().try_fold(
-                    (String::new(), String::new(), String::new()),
+                    (String::new(), PathBuf::new(), String::new()),
                     fold_first_line,
                 )?;
                 req.method = method;
@@ -141,9 +142,9 @@ where
 ///
 /// - prev: (method, path, version)
 fn fold_first_line(
-    mut prev: (String, String, String),
+    mut prev: (String, PathBuf, String),
     (i, r): (usize, &[u8]),
-) -> Result<(String, String, String)> {
+) -> Result<(String, PathBuf, String)> {
     let str = std::str::from_utf8(r)?;
     match i {
         0 => {
@@ -153,7 +154,7 @@ fn fold_first_line(
         }
         1 => {
             // /v1/
-            prev.1 = str.to_owned();
+            prev.1 = PathBuf::from(str);
             anyhow::Ok(prev)
         }
         2 => {

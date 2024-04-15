@@ -101,10 +101,24 @@ where
 /// Static assets handler
 ///
 /// TODO: handle deferent file types
-async fn assets_handler(_req: Request, mut res: Response, assets_path: &Path) -> Result<Response> {
+async fn assets_handler(
+    req: Request,
+    mut res: Response,
+    assets_path: &Path,
+    is_file: bool,
+) -> Result<Response> {
     let mut path = assets_path.to_path_buf();
-    path.push("index.html");
-    let index = fs::read(path).await?;
+    let index = if is_file {
+        path.push(
+            req.path
+                .file_name()
+                .ok_or(anyhow!("read filename from path failed"))?,
+        );
+        fs::read(path).await?
+    } else {
+        path.push("index.html");
+        fs::read(path).await?
+    };
     res.headers.insert(
         "Content-Type".to_owned(),
         "text/html; charset=utf-8".to_owned(),
@@ -160,7 +174,17 @@ where
 
     // Registries routes
     let routes = routes.read().await;
-    let route_handler = routes.get(req.path.as_str());
+    let req_str = req.path.to_string_lossy();
+    let is_file = req_str.contains('.') && !req_str.ends_with('/');
+    let req_path = if is_file {
+        req.path
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or(String::from("/"))
+    } else {
+        req.path.to_string_lossy().to_string()
+    };
+    let route_handler = routes.get(req_path.as_str());
     // regular routes
     let response = match route_handler {
         Some(handler) => {
@@ -179,7 +203,7 @@ where
                         .assets_path
                         .as_ref()
                         .ok_or(anyhow!("cannot find assets path"))?;
-                    assets_handler(req, res, assets_path).await?.into()
+                    assets_handler(req, res, assets_path, is_file).await?.into()
                 }
                 // regular route
                 Some(route_handler) => {
