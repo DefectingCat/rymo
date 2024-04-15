@@ -30,7 +30,8 @@ async fn main() -> Result<()> {
     info!("listening on {port}");
     let app = Rymo::new(&port);
 
-    app.assets("/", &PathBuf::from("./public")).await;
+    let path = env::var("STATIC").expect("static folder must be set");
+    app.assets("/", &PathBuf::from(path)).await;
     app.get("/", handler).await;
     app.serve().await?;
     Ok(())
