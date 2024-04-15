@@ -1,9 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
+use anyhow::anyhow;
 use error::Error;
 use futures::Future;
 use log::{error, info};
 use tokio::{
+    fs,
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::RwLock,
@@ -16,6 +18,10 @@ use crate::error::Result;
 
 pub mod error;
 pub mod http;
+pub mod route;
+
+type Routes<F, Fut> =
+    Arc<RwLock<HashMap<&'static str, HashMap<&'static str, route::Route<F, Fut>>>>>;
 
 pub struct Rymo<'a, F, Fut>
 where
@@ -31,13 +37,13 @@ where
     ///     http_method: route_handler
     /// }
     /// ```
-    pub routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
+    pub routes: Routes<F, Fut>,
 }
 
 impl<'a, F, Fut> Rymo<'a, F, Fut>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = anyhow::Result<Response>> + Send,
+    Fut: Future<Output = anyhow::Result<Response>> + Send + 'static,
 {
     pub fn new(port: &'a str) -> Self {
         Self {
@@ -46,6 +52,7 @@ where
         }
     }
 
+    /// Start server
     pub async fn serve(&self) -> Result<()> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
 
@@ -75,8 +82,38 @@ where
             tokio::spawn(task);
         }
     }
+
+    /// Read target directory and try to find `index.html`
+    ///
+    /// ## Arguments
+    ///
+    /// - `route_path`: registry route's path
+    /// - `assets_path`: the static assets path
+    pub async fn assets(&self, route_path: &'static str, assets_path: &Path) {
+        let mut routes = self.routes.write().await;
+        let path_handler = routes.entry(route_path).or_default();
+        // route
+        let route = route::Route::new(route_path, None, true, Some(assets_path.to_path_buf()));
+        path_handler.entry("get").or_insert(route);
+    }
 }
 
+/// Static assets handler
+///
+/// TODO: handle deferent file types
+async fn assets_handler(_req: Request, mut res: Response, assets_path: &Path) -> Result<Response> {
+    let mut path = assets_path.to_path_buf();
+    path.push("index.html");
+    let index = fs::read(path).await?;
+    res.headers.insert(
+        "Content-Type".to_owned(),
+        "text/html; charset=utf-8".to_owned(),
+    );
+    res.body = index.into();
+    Ok(res)
+}
+
+/// Registry route's handler
 macro_rules! http_handler {
     ($fn_name:ident) => {
         impl<'a, F, Fut> Rymo<'a, F, Fut>
@@ -87,7 +124,9 @@ macro_rules! http_handler {
             pub async fn $fn_name(&self, path: &'static str, handler: F) {
                 let mut routes = self.routes.write().await;
                 let path_handler = routes.entry(path).or_default();
-                path_handler.entry(stringify!($fn_name)).or_insert(handler);
+                // route
+                let route = route::Route::new(path, Some(handler), false, None);
+                path_handler.entry(stringify!($fn_name)).or_insert(route);
             }
         }
     };
@@ -102,10 +141,7 @@ http_handler!(options);
 http_handler!(trace);
 http_handler!(patch);
 
-pub async fn process<F, Fut>(
-    socket: &mut TcpStream,
-    routes: Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>,
-) -> Result<()>
+pub async fn process<F, Fut>(socket: &mut TcpStream, routes: Routes<F, Fut>) -> Result<()>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<Response>> + Send,
@@ -125,6 +161,7 @@ where
     // Registries routes
     let routes = routes.read().await;
     let route_handler = routes.get(req.path.as_str());
+    // regular routes
     let response = match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
@@ -136,7 +173,22 @@ where
             }
             let res = Response::default();
             match method {
-                Some(route_handler) => route_handler(req, res).await?.into(),
+                // static serve
+                Some(route_handler) if route_handler.is_assets => {
+                    let assets_path = route_handler
+                        .assets_path
+                        .as_ref()
+                        .ok_or(anyhow!("cannot find assets path"))?;
+                    assets_handler(req, res, assets_path).await?.into()
+                }
+                // regular route
+                Some(route_handler) => {
+                    let handler = &route_handler
+                        .handler
+                        .as_ref()
+                        .ok_or(anyhow!("cannot find route handler"))?;
+                    handler(req, res).await?.into()
+                }
                 None => {
                     let res = format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed);
                     res.into_bytes()

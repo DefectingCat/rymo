@@ -6,7 +6,6 @@ use dotenvy::dotenv;
 use rymo::http::request::Request;
 use rymo::http::response::Response;
 use rymo::Rymo;
-use tokio::fs;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt, EnvFilter};
 
@@ -31,19 +30,12 @@ async fn main() -> Result<()> {
     info!("listening on {port}");
     let app = Rymo::new(&port);
 
+    app.assets("/", &PathBuf::from("./public")).await;
     app.get("/", handler).await;
-    app.post("/", handler).await;
     app.serve().await?;
     Ok(())
 }
 
-async fn handler(_req: Request, mut res: Response) -> Result<Response> {
-    let path = PathBuf::from("./public/index.html");
-    let index = fs::read(path).await?;
-    res.headers.insert(
-        "Content-Type".to_owned(),
-        "text/html; charset=utf-8".to_owned(),
-    );
-    res.body = index.into();
+async fn handler(_req: Request, res: Response) -> Result<Response> {
     Ok(res)
 }
