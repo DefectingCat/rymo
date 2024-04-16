@@ -1,5 +1,6 @@
+use cached::proc_macro::cached;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -24,7 +25,7 @@ pub mod error;
 pub mod http;
 
 type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
-type AssetsRoutes = Arc<RwLock<HashMap<&'static str, PathBuf>>>;
+type AssetsRoutes = Arc<RwLock<BTreeMap<&'static str, PathBuf>>>;
 
 pub struct Rymo<'a, F, Fut>
 where
@@ -54,7 +55,7 @@ where
         Self {
             port,
             routes: Arc::new(RwLock::new(HashMap::new())),
-            assets_routes: Arc::new(RwLock::new(HashMap::new())),
+            assets_routes: Arc::new(RwLock::new(BTreeMap::new())),
         }
     }
 
@@ -206,8 +207,10 @@ where
     let assets_routes = assets_routes.read().await;
 
     // loop for assets routes
-    let (x, mut y) = (0, 0);
     let req_path_str = req_path.to_string_lossy();
+    // let assets_path = check_assets_path(req_path_str.to_string(), assets_routes);
+
+    let (x, mut y) = (0, 0);
     let assets_path = loop {
         let key = &req_path_str[x..y];
         let assets_path = assets_routes.get(key);
@@ -228,7 +231,7 @@ where
         // handle static serve
         Some(path) => {
             let res = Response::default();
-            assets_handler(req, res, path, is_file).await?.into()
+            assets_handler(req, res, &path, is_file).await?.into()
         }
         // handle regular routes
         None => {
@@ -279,4 +282,29 @@ where
         } // 404
     };
     Ok(res)
+}
+
+#[cached]
+fn check_assets_path(
+    req_path_str: String,
+    assets_routes: BTreeMap<&'static str, PathBuf>,
+    // assets_routes: Arc<RwLock<HashMap<&str, PathBuf>>>,
+    // assets_routes: RwLockReadGuard<'static, BTreeMap<&str, PathBuf>>,
+) -> Option<PathBuf> {
+    let (x, mut y) = (0, 0);
+    loop {
+        let key = &req_path_str[x..y];
+        let assets_path = assets_routes.get(key);
+        match assets_path {
+            Some(path) => {
+                break Some(path.into());
+            }
+            None => {
+                y += 1;
+            }
+        }
+        if y >= req_path_str.len() - 1 {
+            break None;
+        }
+    }
 }
