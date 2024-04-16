@@ -210,8 +210,11 @@ where
     let req_path_str = req_path.to_string_lossy();
     // let assets_path = check_assets_path(req_path_str.to_string(), assets_routes);
 
-    let (x, mut y) = (0, 0);
+    let (x, mut y) = (0, 1);
     let assets_path = loop {
+        if req_path_str.len() == 0 {
+            break None;
+        }
         let key = &req_path_str[x..y];
         let assets_path = assets_routes.get(key);
         match assets_path {
@@ -222,7 +225,7 @@ where
                 y += 1;
             }
         }
-        if y >= req_path_str.len() - 1 {
+        if y >= req_path_str.len() {
             break None;
         }
     };
@@ -282,29 +285,4 @@ where
         } // 404
     };
     Ok(res)
-}
-
-#[cached]
-fn check_assets_path(
-    req_path_str: String,
-    assets_routes: BTreeMap<&'static str, PathBuf>,
-    // assets_routes: Arc<RwLock<HashMap<&str, PathBuf>>>,
-    // assets_routes: RwLockReadGuard<'static, BTreeMap<&str, PathBuf>>,
-) -> Option<PathBuf> {
-    let (x, mut y) = (0, 0);
-    loop {
-        let key = &req_path_str[x..y];
-        let assets_path = assets_routes.get(key);
-        match assets_path {
-            Some(path) => {
-                break Some(path.into());
-            }
-            None => {
-                y += 1;
-            }
-        }
-        if y >= req_path_str.len() - 1 {
-            break None;
-        }
-    }
 }
