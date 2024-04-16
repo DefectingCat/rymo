@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
@@ -197,15 +196,33 @@ where
     let req_path = if is_file {
         req.path
             .parent()
-            .map(|p| p.to_string_lossy())
-            .unwrap_or(Cow::Borrowed("/"))
+            .map(|p| p.to_path_buf())
+            .unwrap_or(PathBuf::from(&req.path))
     } else {
-        req.path.to_string_lossy()
+        req.path.to_path_buf()
     };
 
     // static assets routes
     let assets_routes = assets_routes.read().await;
-    let assets_path = assets_routes.get(req_path.as_ref());
+
+    // loop for assets routes
+    let (x, mut y) = (0, 0);
+    let req_path_str = req_path.to_string_lossy();
+    let assets_path = loop {
+        let key = &req_path_str[x..y];
+        let assets_path = assets_routes.get(key);
+        match assets_path {
+            Some(path) => {
+                break Some(path);
+            }
+            None => {
+                y += 1;
+            }
+        }
+        if y >= req_path_str.len() - 1 {
+            break None;
+        }
+    };
 
     let response = match assets_path {
         // handle static serve
@@ -215,7 +232,7 @@ where
         }
         // handle regular routes
         None => {
-            let route_handler = routes.get(req_path.as_ref());
+            let route_handler = routes.get(req_path_str.as_ref());
             handle_route(route_handler, req, reader).await?
         }
     };
