@@ -16,6 +16,8 @@ log = "0.4.21"
 thiserror = "1.0.58"
 tokio = { version = "1.37.0", features = [
     "io-util",
+    "rt",
+    "rt-multi-thread",
     "net",
     "sync",
     "fs",

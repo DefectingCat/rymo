@@ -1,4 +1,9 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::anyhow;
 use error::Error;
@@ -6,7 +11,7 @@ use futures::Future;
 use log::{error, info};
 use tokio::{
     fs,
-    io::AsyncWriteExt,
+    io::{AsyncRead, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
@@ -18,10 +23,9 @@ use crate::error::Result;
 
 pub mod error;
 pub mod http;
-pub mod route;
 
-type Routes<F, Fut> =
-    Arc<RwLock<HashMap<&'static str, HashMap<&'static str, route::Route<F, Fut>>>>>;
+type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
+type AssetsRoutes = Arc<RwLock<HashMap<&'static str, PathBuf>>>;
 
 pub struct Rymo<'a, F, Fut>
 where
@@ -37,7 +41,8 @@ where
     ///     http_method: route_handler
     /// }
     /// ```
-    pub routes: Routes<F, Fut>,
+    pub routes: Routes<F>,
+    pub assets_routes: AssetsRoutes,
 }
 
 impl<'a, F, Fut> Rymo<'a, F, Fut>
@@ -50,6 +55,7 @@ where
         Self {
             port,
             routes: Arc::new(RwLock::new(HashMap::new())),
+            assets_routes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -62,9 +68,10 @@ where
             let (socket, addr) = listener.accept().await?;
             info!("accept connection from {}", addr);
             let routes = self.routes.clone();
+            let assets_routes = self.assets_routes.clone();
             let task = async move {
                 let mut socket = socket;
-                match process(&mut socket, routes).await {
+                match process(&mut socket, routes, assets_routes).await {
                     Ok(_) => {}
                     Err(err) => {
                         let response = match &err {
@@ -93,18 +100,20 @@ where
     /// - `assets_path`: the static assets path
     #[inline]
     pub async fn assets(&self, route_path: &'static str, assets_path: &Path) {
-        let mut routes = self.routes.write().await;
-        let path_handler = routes.entry(route_path).or_default();
-        // route
-        let route = route::Route::new(route_path, None, true, Some(assets_path.to_path_buf()));
-        path_handler.entry("get").or_insert(route);
+        let mut routes = self.assets_routes.write().await;
+        routes
+            .entry(route_path)
+            .or_insert(assets_path.to_path_buf());
     }
+}
+
+pub async fn static_handler(_req: Request, res: Response) -> Result<Response> {
+    Ok(res)
 }
 
 /// Static assets handler
 ///
 /// TODO: handle deferent file types
-#[inline]
 async fn assets_handler(
     req: Request,
     mut res: Response,
@@ -143,8 +152,8 @@ macro_rules! http_handler {
                 let mut routes = self.routes.write().await;
                 let path_handler = routes.entry(path).or_default();
                 // route
-                let route = route::Route::new(path, Some(handler), false, None);
-                path_handler.entry(stringify!($fn_name)).or_insert(route);
+                // let route = route::Route::new(path, Some(handler), false, None);
+                path_handler.entry(stringify!($fn_name)).or_insert(handler);
             }
         }
     };
@@ -160,7 +169,11 @@ http_handler!(trace);
 http_handler!(patch);
 
 #[inline]
-pub async fn process<F, Fut>(socket: &mut TcpStream, routes: Routes<F, Fut>) -> Result<()>
+pub async fn process<F, Fut>(
+    socket: &mut TcpStream,
+    routes: Routes<F>,
+    assets_routes: AssetsRoutes,
+) -> Result<()>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<Response>> + Send,
@@ -171,27 +184,61 @@ where
     let (headers, reader) = read_headers(reader)
         .await
         .map_err(|e| Error::BadRequest(format!("read headers failed {}", e)))?;
-    let mut req = Request::parse_from_bytes(headers.clone())
+    let req = Request::parse_from_bytes(headers.clone())
         .map_err(|e| Error::BadRequest(format!("parse headers from bytes failed {}", e)))?;
-
-    // parse body
-    let content_len = req.headers.get("content-length");
 
     // Registries routes
     let routes = routes.read().await;
     let req_str = req.path.to_string_lossy();
+    // the request path is file path or not
     let is_file = req_str.contains('.') && !req_str.ends_with('/');
+    // if it's file, use it's parent path
+    // GET /index.html use /
     let req_path = if is_file {
         req.path
             .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or(String::from("/"))
+            .map(|p| p.to_string_lossy())
+            .unwrap_or(Cow::Borrowed("/"))
     } else {
-        req.path.to_string_lossy().to_string()
+        req.path.to_string_lossy()
     };
-    let route_handler = routes.get(req_path.as_str());
-    // regular routes
-    let response = match route_handler {
+
+    // static assets routes
+    let assets_routes = assets_routes.read().await;
+    let assets_path = assets_routes.get(req_path.as_ref());
+
+    let response = match assets_path {
+        // handle static serve
+        Some(path) => {
+            let res = Response::default();
+            assets_handler(req, res, path, is_file).await?.into()
+        }
+        // handle regular routes
+        None => {
+            let route_handler = routes.get(req_path.as_ref());
+            handle_route(route_handler, req, reader).await?
+        }
+    };
+
+    // let response = handle_route(route_handler, req, reader).await?;
+    writer.write_all(&response).await?;
+    writer.flush().await?;
+    Ok(())
+}
+
+async fn handle_route<F, Fut, R>(
+    route_handler: Option<&HashMap<&str, F>>,
+    mut req: Request,
+    reader: R,
+) -> anyhow::Result<Vec<u8>>
+where
+    F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = anyhow::Result<Response>> + Send,
+    R: AsyncRead + Unpin,
+{
+    // parse body
+    let content_len = req.headers.get("content-length");
+    let res = match route_handler {
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
             if let Some(len) = content_len {
@@ -202,22 +249,7 @@ where
             }
             let res = Response::default();
             match method {
-                // static serve
-                Some(route_handler) if route_handler.is_assets => {
-                    let assets_path = route_handler
-                        .assets_path
-                        .as_ref()
-                        .ok_or(anyhow!("cannot find assets path"))?;
-                    assets_handler(req, res, assets_path, is_file).await?.into()
-                }
-                // regular route
-                Some(route_handler) => {
-                    let handler = &route_handler
-                        .handler
-                        .as_ref()
-                        .ok_or(anyhow!("cannot find route handler"))?;
-                    handler(req, res).await?.into()
-                }
+                Some(route_handler) => route_handler(req, res).await?.into(),
                 None => {
                     let res = format!("HTTP/1.1 {}\r\n\r\n", Status::MethodNotAllowed);
                     res.into_bytes()
@@ -229,7 +261,5 @@ where
             format!("HTTP/1.1 {}\r\n\r\n", Status::NotFound).into_bytes()
         } // 404
     };
-    writer.write_all(&response).await?;
-    writer.flush().await?;
-    Ok(())
+    Ok(res)
 }
