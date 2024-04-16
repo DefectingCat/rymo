@@ -27,6 +27,7 @@ impl Default for Request {
 
 impl Request {
     /// Parse request from HTTP header's bytes that read from tcp.
+    #[inline]
     pub fn parse_from_bytes(bytes: Bytes) -> Result<Self> {
         let mut req = Self::default();
 
@@ -70,6 +71,7 @@ impl Request {
 /// but not common headers, include first line like GET / HTTP/1.1
 /// 13 10 13 10
 /// \r \n \r \n
+#[inline]
 pub async fn read_headers<R>(mut reader: R) -> Result<(Bytes, R)>
 where
     R: AsyncRead + Unpin,
@@ -107,6 +109,7 @@ where
 }
 
 /// Read client request body by it's content-length
+#[inline]
 pub async fn read_body<R>(mut reader: R, len: &str) -> Result<(Bytes, R)>
 where
     R: AsyncRead + Unpin,
@@ -119,6 +122,7 @@ where
 }
 
 /// Pull all body into tokio::io::empty
+#[inline]
 pub async fn drop_body<R>(reader: R, len: Option<&str>) -> Result<()>
 where
     R: AsyncRead + Unpin,
@@ -141,6 +145,7 @@ where
 /// ## Arguments
 ///
 /// - prev: (method, path, version)
+#[inline]
 fn fold_first_line(
     mut prev: (String, PathBuf, String),
     (i, r): (usize, &[u8]),
@@ -171,6 +176,7 @@ fn fold_first_line(
 /// ## Arguments
 ///
 /// - prev: (key, value) for hashmap
+#[inline]
 fn fold_headers(mut prev: (String, String), (i, h): (usize, &str)) -> Result<(String, String)> {
     match i {
         // User-Agent: ua

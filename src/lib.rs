@@ -45,6 +45,7 @@ where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<Response>> + Send + 'static,
 {
+    #[inline]
     pub fn new(port: &'a str) -> Self {
         Self {
             port,
@@ -53,6 +54,7 @@ where
     }
 
     /// Start server
+    #[inline]
     pub async fn serve(&self) -> Result<()> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
 
@@ -89,6 +91,7 @@ where
     ///
     /// - `route_path`: registry route's path
     /// - `assets_path`: the static assets path
+    #[inline]
     pub async fn assets(&self, route_path: &'static str, assets_path: &Path) {
         let mut routes = self.routes.write().await;
         let path_handler = routes.entry(route_path).or_default();
@@ -101,6 +104,7 @@ where
 /// Static assets handler
 ///
 /// TODO: handle deferent file types
+#[inline]
 async fn assets_handler(
     req: Request,
     mut res: Response,
@@ -155,6 +159,7 @@ http_handler!(options);
 http_handler!(trace);
 http_handler!(patch);
 
+#[inline]
 pub async fn process<F, Fut>(socket: &mut TcpStream, routes: Routes<F, Fut>) -> Result<()>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,

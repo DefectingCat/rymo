@@ -17,9 +17,6 @@ thiserror = "1.0.58"
 tokio = { version = "1.37.0", features = [
     "io-util",
     "net",
-    "rt",
-    "macros",
-    "rt-multi-thread",
     "sync",
     "fs",
 ] }

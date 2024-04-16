@@ -23,6 +23,7 @@ pub trait IntoResponse {
 }
 
 impl IntoResponse for Response {
+    #[inline]
     fn into_response(self) -> Vec<u8> {
         let headers = self
             .headers
@@ -42,6 +43,7 @@ impl IntoResponse for Response {
     }
 } */
 impl From<Response> for Vec<u8> {
+    #[inline]
     fn from(value: Response) -> Self {
         value.into_response()
     }
@@ -57,6 +59,7 @@ pub enum Status {
 }
 
 impl From<&Status> for &str {
+    #[inline]
     fn from(val: &Status) -> Self {
         use Status::*;
 
@@ -71,6 +74,7 @@ impl From<&Status> for &str {
 }
 
 impl Display for Status {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let status: &'static str = self.into();
         write!(f, "{}", status)

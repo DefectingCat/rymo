@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[inline]
 async fn handler(_req: Request, res: Response) -> Result<Response> {
     Ok(res)
 }
