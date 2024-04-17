@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use anyhow::{Ok, Result};
 use dotenvy::dotenv;
-use rymo::http::request::Request;
-use rymo::http::response::Response;
+use rymo::request::Request;
+use rymo::response::Response;
 use rymo::Rymo;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt, EnvFilter};
