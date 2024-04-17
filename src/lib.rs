@@ -126,10 +126,9 @@ async fn assets_handler(
     let parent = &req.path.to_str();
     // find static assets child directory
     let directory = match assets_key {
-        Some(key) if matches!(parent, Some(_)) => find_directory(key, parent.unwrap()),
+        Some(key) if parent.is_some() => find_directory(key, parent.unwrap()),
         _ => None,
     };
-    dbg!(directory);
     if let Some(d) = directory {
         path.push(d);
     }
@@ -241,7 +240,7 @@ where
         // handle static serve
         Some(path) => {
             let res = Response::default();
-            assets_handler(req, res, key, &path, is_file).await?.into()
+            assets_handler(req, res, key, path, is_file).await?.into()
         }
         // handle regular routes
         None => {
