@@ -1,25 +1,23 @@
+use crate::{
+    error::{Error, Result},
+    http::mime::{read_mime, HTML_UTF_8},
+    request::{drop_body, read_body, read_headers, Request},
+    response::{Response, Status},
+    utils::find_directory,
+};
+use futures::Future;
+use log::{error, info};
 use std::{
     collections::{BTreeMap, HashMap},
+    ffi::OsStr,
     path::{Path, PathBuf},
     sync::Arc,
 };
-
-use anyhow::anyhow;
-use error::Error;
-use futures::Future;
-use log::{error, info};
 use tokio::{
     fs,
     io::{AsyncRead, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::RwLock,
-};
-
-use crate::request::{drop_body, read_body, read_headers, Request};
-use crate::response::{Response, Status};
-use crate::{
-    error::{self, Result},
-    utils::find_directory,
 };
 
 pub type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
@@ -97,7 +95,7 @@ where
     /// - `route_path`: registry route's path
     /// - `assets_path`: the static assets path
     #[inline]
-    pub async fn assets(&self, route_path: &'static str, assets_path: &Path) {
+    pub async fn assets(&self, route_path: &'static str, assets_path: &Path, _handler: F) {
         let mut routes = self.assets_routes.write().await;
         routes
             .entry(route_path)
@@ -105,13 +103,12 @@ where
     }
 }
 
-pub async fn static_handler(_req: Request, res: Response) -> Result<Response> {
+#[inline]
+pub async fn static_handler(_req: Request, res: Response) -> anyhow::Result<Response> {
     Ok(res)
 }
 
 /// Static assets handler
-///
-/// TODO: handle deferent file types
 async fn assets_handler(
     req: Request,
     mut res: Response,
@@ -131,22 +128,22 @@ async fn assets_handler(
         path.push(d);
     }
 
-    let index = if is_file {
-        path.push(
-            req.path
-                .file_name()
-                .ok_or(anyhow!("read filename from path failed"))?,
-        );
-        fs::read(path).await?
+    let mime = if is_file {
+        let ext = req
+            .path
+            .extension()
+            .unwrap_or(OsStr::new(""))
+            .to_str()
+            .unwrap_or("");
+        read_mime(ext)
     } else {
         path.push("index.html");
-        fs::read(path).await?
+        HTML_UTF_8
     };
-    res.headers.insert(
-        "Content-Type".to_owned(),
-        "text/html; charset=utf-8".to_owned(),
-    );
-    res.body = index.into();
+    let file = fs::read(path).await?;
+    res.headers
+        .insert("Content-Type".to_owned(), mime.to_owned());
+    res.body = file.into();
     Ok(res)
 }
 

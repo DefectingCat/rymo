@@ -3,16 +3,14 @@ use std::path::PathBuf;
 
 use anyhow::{Ok, Result};
 use dotenvy::dotenv;
-use rymo::request::Request;
-use rymo::response::Response;
+use rymo::static_handler;
 use rymo::Rymo;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, registry, util::SubscriberInitExt, EnvFilter};
 
 pub fn init_logger() {
     let formatting_layer = fmt::layer()
-        // .pretty()
-        .with_thread_ids(false)
+        .with_thread_ids(true)
         .with_target(false)
         .with_writer(std::io::stdout);
 
@@ -31,13 +29,7 @@ async fn main() -> Result<()> {
     let app = Rymo::new(&port);
 
     let path = env::var("STATIC").expect("static folder must be set");
-    app.assets("/", &PathBuf::from(path)).await;
-    app.get("a", handler).await;
+    app.assets("/", &PathBuf::from(path), static_handler).await;
     app.serve().await?;
     Ok(())
-}
-
-#[inline]
-async fn handler(_req: Request, res: Response) -> Result<Response> {
-    Ok(res)
 }
