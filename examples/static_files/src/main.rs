@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
 
     let path = env::var("STATIC").expect("static folder must be set");
     app.assets("/", &PathBuf::from(path)).await;
-    app.get("/", handler).await;
+    app.get("a", handler).await;
     app.serve().await?;
     Ok(())
 }

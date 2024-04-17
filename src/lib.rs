@@ -18,10 +18,11 @@ use tokio::{
 use http::request::{drop_body, read_body, read_headers, Request};
 pub use http::response::{IntoResponse, Response, Status};
 
-use crate::error::Result;
+use crate::{error::Result, utils::find_directory};
 
 pub mod error;
 pub mod http;
+pub mod utils;
 
 type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
 type AssetsRoutes = Arc<RwLock<BTreeMap<&'static str, PathBuf>>>;
@@ -116,10 +117,23 @@ pub async fn static_handler(_req: Request, res: Response) -> Result<Response> {
 async fn assets_handler(
     req: Request,
     mut res: Response,
+    assets_key: Option<&str>,
     assets_path: &Path,
     is_file: bool,
 ) -> Result<Response> {
     let mut path = assets_path.to_path_buf();
+    // use request path as parent path
+    let parent = &req.path.to_str();
+    // find static assets child directory
+    let directory = match assets_key {
+        Some(key) if matches!(parent, Some(_)) => find_directory(key, parent.unwrap()),
+        _ => None,
+    };
+    dbg!(directory);
+    if let Some(d) = directory {
+        path.push(d);
+    }
+
     let index = if is_file {
         path.push(
             req.path
@@ -204,28 +218,22 @@ where
 
     // static assets routes
     let assets_routes = assets_routes.read().await;
-
     // loop for assets routes
     let req_path_str = req_path.to_string_lossy();
-    // let assets_path = check_assets_path(req_path_str.to_string(), assets_routes);
-
     let (x, mut y) = (0, 1);
-    let assets_path = loop {
-        if req_path_str.len() == 0 {
-            break None;
+    let (key, assets_path) = loop {
+        if y > req_path_str.len() {
+            break (None, None);
         }
         let key = &req_path_str[x..y];
         let assets_path = assets_routes.get(key);
         match assets_path {
             Some(path) => {
-                break Some(path);
+                break (key.into(), Some(path));
             }
             None => {
                 y += 1;
             }
-        }
-        if y >= req_path_str.len() {
-            break None;
         }
     };
 
@@ -233,7 +241,7 @@ where
         // handle static serve
         Some(path) => {
             let res = Response::default();
-            assets_handler(req, res, &path, is_file).await?.into()
+            assets_handler(req, res, key, &path, is_file).await?.into()
         }
         // handle regular routes
         None => {
