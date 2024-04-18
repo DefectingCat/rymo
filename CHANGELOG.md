@@ -1,5 +1,11 @@
 # Change log
 
+## [0.1.3] - 2024-04-18
+
+-   Refactor routes
+-   Inline utils functions
+-   Static files serve support
+
 ## [0.1.2] - 2024-04-11
 
 -   Add custom response headers
