@@ -1,6 +1,7 @@
 use crate::{
     error::{Error, Result},
     http::mime::{read_mime, HTML_UTF_8},
+    middleware::Middleware,
     request::{drop_body, read_body, read_headers, Request},
     response::{Response, Status},
     utils::find_directory,
@@ -22,11 +23,13 @@ use tokio::{
 
 pub type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
 pub type AssetsRoutes = Arc<RwLock<BTreeMap<&'static str, PathBuf>>>;
+pub type Middlewares<M> = Arc<RwLock<Vec<M>>>;
 
-pub struct Rymo<'a, F, Fut>
+pub struct Rymo<'a, F, Fut, M>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
+    M: Middleware,
 {
     /// Current listen port
     pub port: &'a str,
@@ -46,12 +49,14 @@ where
     /// }
     /// ```
     pub assets_routes: AssetsRoutes,
+    pub middlewares: Middlewares<M>,
 }
 
-impl<'a, F, Fut> Rymo<'a, F, Fut>
+impl<'a, F, Fut, M> Rymo<'a, F, Fut, M>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
+    M: Middleware,
 {
     #[inline]
     pub fn new(port: &'a str) -> Self {
@@ -59,6 +64,7 @@ where
             port,
             routes: Arc::new(RwLock::new(HashMap::new())),
             assets_routes: Arc::new(RwLock::new(BTreeMap::new())),
+            middlewares: Arc::new(RwLock::new(vec![])),
         }
     }
 
@@ -108,6 +114,8 @@ where
             .entry(route_path)
             .or_insert(assets_path.to_path_buf());
     }
+
+    pub async fn middleware(&self) {}
 }
 
 #[inline]
@@ -157,10 +165,11 @@ async fn assets_handler(
 /// Registry route's handler
 macro_rules! http_handler {
     ($fn_name:ident) => {
-        impl<'a, F, Fut> Rymo<'a, F, Fut>
+        impl<'a, F, Fut, M> Rymo<'a, F, Fut, M>
         where
             F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
             Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
+            M: Middleware,
         {
             pub async fn $fn_name(&self, path: &'static str, handler: F) {
                 let mut routes = self.routes.write().await;
