@@ -1,11 +1,20 @@
 use anyhow::anyhow;
 
+use crate::response::{IntoResponse, Status};
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("invalid request {0}")]
     BadRequest(String),
     #[error("server internal error {0}")]
     InternalServerError(anyhow::Error),
+}
+
+impl IntoResponse for Error {
+    #[inline]
+    fn into_response(self) -> Vec<u8> {
+        format!("HTTP/1.1 {}\r\n\r\n", Status::InternalServer).into_bytes()
+    }
 }
 
 impl From<std::io::Error> for Error {

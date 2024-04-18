@@ -440,6 +440,7 @@ dependencies = [
  "bytes",
  "futures",
  "log",
+ "socket2",
  "thiserror",
  "tokio",
 ]
