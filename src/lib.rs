@@ -1,6 +1,7 @@
 pub mod error;
 pub mod http;
 pub mod middleware;
+pub mod route;
 pub mod server;
 pub mod utils;
 

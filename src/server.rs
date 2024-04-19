@@ -4,6 +4,7 @@ use crate::{
     middleware::Middleware,
     request::{drop_body, read_body, read_headers, Request},
     response::{Response, Status},
+    route::Route,
     utils::find_directory,
 };
 use futures::Future;
@@ -21,7 +22,9 @@ use tokio::{
     sync::RwLock,
 };
 
-pub type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
+// pub type Routes<F> = Arc<RwLock<HashMap<&'static str, HashMap<&'static str, F>>>>;
+pub type Routes<F, Fut, M> =
+    Arc<RwLock<HashMap<&'static str, HashMap<&'static str, Route<F, Fut, M>>>>>;
 pub type AssetsRoutes = Arc<RwLock<BTreeMap<&'static str, PathBuf>>>;
 pub type Middlewares<M> = Arc<RwLock<Vec<M>>>;
 
@@ -29,7 +32,7 @@ pub struct Rymo<'a, F, Fut, M>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
-    M: Middleware,
+    M: Middleware + Send + Sync + 'static,
 {
     /// Current listen port
     pub port: &'a str,
@@ -40,7 +43,7 @@ where
     ///     http_method: route_handler
     /// }
     /// ```
-    pub routes: Routes<F>,
+    pub routes: Routes<F, Fut, M>,
     /// Static assets routes
     ///
     /// ```not_rust
@@ -55,8 +58,8 @@ where
 impl<'a, F, Fut, M> Rymo<'a, F, Fut, M>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
-    M: Middleware,
+    Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send + Sync + Middleware + 'static,
+    M: Middleware + Send + Sync + 'static,
 {
     #[inline]
     pub fn new(port: &'a str) -> Self {
@@ -115,7 +118,10 @@ where
             .or_insert(assets_path.to_path_buf());
     }
 
-    pub async fn middleware(&self) {}
+    pub async fn middleware(&self, middleware: M) {
+        let mut middlewares = self.middlewares.write().await;
+        middlewares.push(middleware);
+    }
 }
 
 #[inline]
@@ -169,14 +175,15 @@ macro_rules! http_handler {
         where
             F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
             Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
-            M: Middleware,
+            M: Middleware + Send + Sync + 'static,
         {
             pub async fn $fn_name(&self, path: &'static str, handler: F) {
                 let mut routes = self.routes.write().await;
                 let path_handler = routes.entry(path).or_default();
+                let middlewares = self.middlewares.clone();
                 // route
-                // let route = route::Route::new(path, Some(handler), false, None);
-                path_handler.entry(stringify!($fn_name)).or_insert(handler);
+                let route = Route::new(handler, middlewares);
+                path_handler.entry(stringify!($fn_name)).or_insert(route);
             }
         }
     };
@@ -195,14 +202,15 @@ http_handler!(patch);
 ///
 /// And build req and res.
 #[inline]
-pub async fn process<F, Fut>(
+pub async fn process<F, Fut, M>(
     socket: &mut TcpStream,
-    routes: Routes<F>,
+    routes: Routes<F, Fut, M>,
     assets_routes: AssetsRoutes,
 ) -> Result<()>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
+    Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send + Sync + Middleware,
+    M: Middleware + Send + Sync + 'static,
 {
     let socket_ref = socket2::SockRef::from(&socket);
     let (reader, mut writer) = socket.split();
@@ -281,8 +289,8 @@ where
     Ok(())
 }
 
-async fn handle_route<F, Fut, R>(
-    route_handler: Option<&HashMap<&str, F>>,
+async fn handle_route<F, Fut, R, M>(
+    route_handler: Option<&HashMap<&str, Route<F, Fut, M>>>,
     mut req: Request,
     mut res: Response,
     reader: R,
@@ -290,6 +298,7 @@ async fn handle_route<F, Fut, R>(
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<(Request, Response)>> + Send,
+    M: Middleware + Send + Sync + 'static,
     R: AsyncRead + Unpin,
 {
     // parse body
@@ -304,7 +313,7 @@ where
                 req.body = body;
             }
             match method {
-                Some(route_handler) => route_handler(req, res).await?,
+                Some(route_handler) => (route_handler.handler)(req, res).await?,
                 None => {
                     res.status = Status::MethodNotAllowed;
                     (req, res)
