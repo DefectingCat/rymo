@@ -213,10 +213,10 @@ where
     M: Middleware + Send + Sync + 'static,
 {
     let socket_ref = socket2::SockRef::from(&socket);
-    let (reader, mut writer) = socket.split();
+    let (mut reader, mut writer) = socket.split();
 
     // build client request
-    let (headers, reader) = read_headers(reader)
+    let headers = read_headers(&mut reader)
         .await
         .map_err(|e| Error::BadRequest(format!("read headers failed {}", e)))?;
     let req = Request::parse_from_bytes(headers.clone())
@@ -293,7 +293,7 @@ async fn handle_route<F, Fut, R, M>(
     route_handler: Option<&HashMap<&str, Route<F, Fut, M>>>,
     mut req: Request,
     mut res: Response,
-    reader: R,
+    mut reader: R,
 ) -> Result<(Request, Response)>
 where
     F: Fn(Request, Response) -> Fut + Send + Sync + 'static,
@@ -307,7 +307,7 @@ where
         Some(handler) => {
             let method = handler.get(req.method.to_lowercase().as_str());
             if let Some(len) = content_len {
-                let (body, _) = read_body(reader, len)
+                let body = read_body(&mut reader, len)
                     .await
                     .map_err(Error::InternalServerError)?;
                 req.body = body;
@@ -321,7 +321,7 @@ where
             }
         }
         None => {
-            drop_body(reader, content_len.map(|c| c.as_str())).await?;
+            drop_body(&mut reader, content_len.map(|c| c.as_str())).await?;
             res.status = Status::NotFound;
             (req, res)
         } // 404

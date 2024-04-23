@@ -72,7 +72,7 @@ impl Request {
 /// 13 10 13 10
 /// \r \n \r \n
 #[inline]
-pub async fn read_headers<R>(mut reader: R) -> Result<(Bytes, R)>
+pub async fn read_headers<R>(reader: &mut R) -> Result<Bytes>
 where
     R: AsyncRead + Unpin,
 {
@@ -97,7 +97,7 @@ where
                 }
             }
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                return Ok((buffer.freeze(), reader));
+                return Ok(buffer.freeze());
             }
             Err(e) => {
                 return Err(e.into());
@@ -105,12 +105,12 @@ where
         }
     }
     let headers = buffer.freeze();
-    Ok((headers.clone(), reader))
+    Ok(headers.clone())
 }
 
 /// Read client request body by it's content-length
 #[inline]
-pub async fn read_body<R>(mut reader: R, len: &str) -> Result<(Bytes, R)>
+pub async fn read_body<R>(reader: &mut R, len: &str) -> Result<Bytes>
 where
     R: AsyncRead + Unpin,
 {
@@ -118,12 +118,12 @@ where
     let mut buffer = vec![0u8; len];
     reader.read_exact(&mut buffer).await?;
     let buffer = Bytes::copy_from_slice(&buffer);
-    Ok((buffer, reader))
+    Ok(buffer)
 }
 
 /// Pull all body into tokio::io::empty
 #[inline]
-pub async fn drop_body<R>(reader: R, len: Option<&str>) -> Result<()>
+pub async fn drop_body<R>(reader: &mut R, len: Option<&str>) -> Result<()>
 where
     R: AsyncRead + Unpin,
 {
